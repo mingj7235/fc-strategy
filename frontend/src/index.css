@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* Dark theme global styles */
+@layer base {
+  :root {
+    /* Dark theme colors */
+    --color-dark-bg: 15 20 25;
+    --color-dark-card: 26 31 46;
+    --color-dark-border: 45 55 72;
+    --color-dark-hover: 37 45 61;
+
+    /* Accent colors */
+    --color-accent-primary: 59 130 246;
+    --color-accent-success: 16 185 129;
+    --color-accent-warning: 245 158 11;
+    --color-accent-danger: 239 68 68;
+    --color-accent-info: 6 182 212;
+    --color-accent-purple: 139 92 246;
+
+    /* Chart colors */
+    --color-chart-blue: 59 130 246;
+    --color-chart-green: 16 185 129;
+    --color-chart-yellow: 251 191 36;
+    --color-chart-red: 239 68 68;
+    --color-chart-purple: 168 85 247;
+    --color-chart-cyan: 6 182 212;
+    --color-chart-pink: 236 72 153;
+    --color-chart-orange: 249 115 22;
+  }
+
+  body {
+    background-color: rgb(var(--color-dark-bg));
+    color: rgb(243 244 246);
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: rgb(var(--color-dark-bg));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--color-dark-border));
+    border-radius: 0.5rem;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--color-dark-hover));
+  }
+}
+
+@layer utilities {
+  .bg-dark-bg {
+    background-color: rgb(var(--color-dark-bg));
+  }
+
+  .bg-dark-card {
+    background-color: rgb(var(--color-dark-card));
+  }
+
+  .bg-dark-hover {
+    background-color: rgb(var(--color-dark-hover));
+  }
+
+  .border-dark-border {
+    border-color: rgb(var(--color-dark-border));
+  }
+
+  .text-accent-primary {
+    color: rgb(var(--color-accent-primary));
+  }
+
+  .bg-accent-success {
+    background-color: rgb(var(--color-accent-success));
+  }
+
+  .text-accent-success {
+    color: rgb(var(--color-accent-success));
+  }
+
+  .bg-accent-danger {
+    background-color: rgb(var(--color-accent-danger));
+  }
+
+  .text-accent-danger {
+    color: rgb(var(--color-accent-danger));
+  }
+
+  .text-chart-blue {
+    color: rgb(var(--color-chart-blue));
+  }
+
+  .bg-chart-blue {
+    background-color: rgb(var(--color-chart-blue));
+  }
+
+  .text-chart-green {
+    color: rgb(var(--color-chart-green));
+  }
+
+  .bg-chart-green {
+    background-color: rgb(var(--color-chart-green));
+  }
+
+  .text-chart-yellow {
+    color: rgb(var(--color-chart-yellow));
+  }
+
+  .bg-chart-yellow {
+    background-color: rgb(var(--color-chart-yellow));
+  }
+
+  .text-chart-red {
+    color: rgb(var(--color-chart-red));
+  }
+
+  .text-chart-purple {
+    color: rgb(var(--color-chart-purple));
+  }
+
+  .bg-chart-purple {
+    background-color: rgb(var(--color-chart-purple));
+  }
+
+  .text-chart-cyan {
+    color: rgb(var(--color-chart-cyan));
+  }
+
+  .border-chart-blue {
+    border-color: rgb(var(--color-chart-blue));
+  }
+
+  .border-chart-green {
+    border-color: rgb(var(--color-chart-green));
+  }
+
+  .border-chart-yellow {
+    border-color: rgb(var(--color-chart-yellow));
+  }
+
+  .border-chart-purple {
+    border-color: rgb(var(--color-chart-purple));
+  }
+
+  .bg-gradient-dark {
+    background-image: linear-gradient(to bottom right, rgb(var(--color-dark-card)), rgb(var(--color-dark-bg)));
+  }
+
+  .bg-gradient-card {
+    background-image: linear-gradient(to bottom right, rgb(30 41 59), rgb(var(--color-dark-card)));
+  }
+
+  .shadow-dark {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18);
+  }
+
+  .shadow-dark-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.18);
+  }
+}
