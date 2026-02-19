@@ -1,0 +1,1212 @@
+"""
+Position-Specific Player Evaluator
+세계적인 감독 수준의 포지션별 전문 평가 시스템
+
+Based on philosophies of:
+- Mourinho: Defensive solidity, tactical discipline
+- Klopp: High-intensity pressing, transitions
+- Guardiola: Build-up play, passing accuracy
+"""
+from typing import List, Dict, Any, Optional
+import statistics
+
+
+class PositionSpecificEvaluator:
+    """
+    각 포지션의 역할에 맞는 전문적인 평가 시스템
+    """
+
+    # Nexon API Position Codes
+    POSITION_CODES = {
+        'GK': [0],
+        'CB': [1, 4, 5, 6],  # SW, RCB, CB, LCB
+        'FB': [3, 7],  # RB, LB
+        'WB': [2, 8],  # RWB, LWB
+        'CDM': [9, 10, 11],  # RDM, CDM, LDM
+        'CM': [13, 14, 15],  # RCM, CM, LCM
+        'CAM': [17, 18, 19],  # RAM, CAM, LAM
+        'WM': [12, 16],  # RM, LM
+        'W': [20, 22, 23, 27],  # RF, LF, RW, LW
+        'ST': [21, 24, 25, 26],  # CF, RS, ST, LS
+    }
+
+    @classmethod
+    def evaluate_player(cls,
+                       player_stats: List[Dict[str, Any]],
+                       position_code: int) -> Dict[str, Any]:
+        """
+        포지션별 전문 평가 수행
+
+        Args:
+            player_stats: 선수의 최근 경기 통계 리스트
+            position_code: 포지션 코드 (0-27)
+
+        Returns:
+            포지션별 상세 평가 결과
+        """
+        if not player_stats:
+            return cls._empty_evaluation()
+
+        # 포지션 그룹 결정
+        position_group = cls._get_position_group(position_code)
+
+        # 포지션별 평가 수행
+        if position_group == 'GK':
+            return cls._evaluate_goalkeeper(player_stats)
+        elif position_group == 'CB':
+            return cls._evaluate_center_back(player_stats)
+        elif position_group in ['FB', 'WB']:
+            return cls._evaluate_fullback(player_stats, position_group == 'WB')
+        elif position_group == 'CDM':
+            return cls._evaluate_defensive_midfielder(player_stats)
+        elif position_group == 'CM':
+            return cls._evaluate_central_midfielder(player_stats)
+        elif position_group == 'CAM':
+            return cls._evaluate_attacking_midfielder(player_stats)
+        elif position_group in ['WM', 'W']:
+            return cls._evaluate_winger(player_stats)
+        elif position_group == 'ST':
+            return cls._evaluate_striker(player_stats)
+        else:
+            return cls._empty_evaluation()
+
+    @classmethod
+    def _get_position_group(cls, position_code: int) -> Optional[str]:
+        """포지션 코드를 그룹으로 변환"""
+        for group, codes in cls.POSITION_CODES.items():
+            if position_code in codes:
+                return group
+        return None
+
+    # ========== GOALKEEPER (GK) ==========
+    @classmethod
+    def _evaluate_goalkeeper(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        골키퍼 전문 평가
+
+        핵심 지표:
+        - 선방 능력 (25%)
+        - 공중볼 장악 (10%)
+        - 위치 선정 (10%)
+        - 패스 정확도 (15%)
+        - 빌드업 기여 (10%)
+        - 안정성 (20%)
+        - 평점 기반 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 기본 수비 (45%)
+        # 선방 능력
+        total_saves = sum(s.get('saves') or 0 for s in stats)
+        total_opponent_shots = sum(s.get('opponent_shots') or 0 for s in stats)
+        save_percentage = (total_saves / total_opponent_shots * 100) if total_opponent_shots > 0 else 0
+
+        # 실점 vs xG
+        total_goals_conceded = sum(s.get('goals_conceded') or 0 for s in stats)
+        total_xg_against = sum(s.get('xg_against') or 0 for s in stats)
+        xg_prevention = ((total_xg_against - total_goals_conceded) / num_matches) if total_xg_against > 0 else 0
+
+        # 클린시트
+        clean_sheets = sum(1 for s in stats if (s.get('goals_conceded') or 0) == 0)
+        clean_sheet_rate = (clean_sheets / num_matches * 100) if num_matches > 0 else 0
+
+        # 선방 능력 점수 (0-100)
+        saving_score = min(100, (
+            (save_percentage / 80 * 40) +  # 80% 선방률 = 40점
+            (max(0, xg_prevention) * 10) +  # xG 대비 실점 방어
+            (clean_sheet_rate / 50 * 20)  # 클린시트 비율
+        ))
+
+        # 공중볼 장악
+        total_aerial_success = sum(s.get('aerial_success', 0) for s in stats)
+        aerial_score = min(100, total_aerial_success / num_matches * 10)  # 경기당 10회 = 100점
+
+        # B. 배급 능력 (25%)
+        total_pass_attempts = sum(s.get('pass_attempts', 0) for s in stats)
+        total_pass_success = sum(s.get('pass_success', 0) for s in stats)
+        pass_accuracy = (total_pass_success / total_pass_attempts * 100) if total_pass_attempts > 0 else 0
+
+        total_long_pass_attempts = sum(s.get('long_pass_attempts', 0) for s in stats)
+        total_long_pass_success = sum(s.get('long_pass_success', 0) for s in stats)
+        long_pass_accuracy = (total_long_pass_success / total_long_pass_attempts * 100) if total_long_pass_attempts > 0 else 0
+
+        # 패스 점수
+        passing_score = min(100, (
+            (pass_accuracy / 80 * 60) +  # 전체 패스 정확도
+            (long_pass_accuracy / 60 * 40)  # 긴 패스 정확도
+        ))
+
+        # 빌드업 기여
+        avg_passes_per_game = total_pass_attempts / num_matches if num_matches > 0 else 0
+        buildup_score = min(100, avg_passes_per_game / 30 * 100)  # 경기당 30개 패스 = 100점
+
+        # C. 안정성 (20%)
+        # 실수 최소화 (핸들링 에러, 패스 미스로 인한 실점 등)
+        total_errors = sum(s.get('errors_leading_to_goal') or 0 for s in stats)
+        error_score = max(0, 100 - (total_errors * 20))  # 에러 1개당 -20점
+
+        # 일관성 (평점 분산)
+        ratings = [s.get('rating', 6.5) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        consistency_score = max(0, 100 - (rating_variance * 30))
+
+        stability_score = (error_score * 0.75 + consistency_score * 0.25)
+
+        # D. 평점 기반 (10%)
+        avg_rating = statistics.mean(ratings) if ratings else 6.5
+        rating_score = min(100, (avg_rating - 5.0) / 3.0 * 100)  # 5.0~8.0 범위를 0~100으로
+
+        # 최종 종합 점수 (가중 평균)
+        final_score = (
+            saving_score * 0.25 +  # 선방 능력
+            aerial_score * 0.10 +  # 공중볼
+            passing_score * 0.15 +  # 패스 정확도
+            buildup_score * 0.10 +  # 빌드업
+            stability_score * 0.20 +  # 안정성
+            (saving_score * 0.1) +  # 위치 선정 (선방과 연관)
+            rating_score * 0.10  # 평점
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'saving_ability': {
+                    'score': round(saving_score, 1),
+                    'save_percentage': round(save_percentage, 1),
+                    'xg_prevention': round(xg_prevention, 2),
+                    'clean_sheets': clean_sheets,
+                    'clean_sheet_rate': round(clean_sheet_rate, 1)
+                },
+                'aerial_dominance': {
+                    'score': round(aerial_score, 1),
+                    'total_aerial_wins': total_aerial_success
+                },
+                'distribution': {
+                    'passing_score': round(passing_score, 1),
+                    'pass_accuracy': round(pass_accuracy, 1),
+                    'long_pass_accuracy': round(long_pass_accuracy, 1)
+                },
+                'buildup_contribution': {
+                    'score': round(buildup_score, 1),
+                    'avg_passes_per_game': round(avg_passes_per_game, 1)
+                },
+                'stability': {
+                    'score': round(stability_score, 1),
+                    'total_errors': total_errors,
+                    'consistency': round(consistency_score, 1)
+                },
+                'rating': {
+                    'score': round(rating_score, 1),
+                    'avg_rating': round(avg_rating, 2)
+                }
+            },
+            'key_strengths': cls._identify_gk_strengths(saving_score, passing_score, stability_score),
+            'areas_for_improvement': cls._identify_gk_weaknesses(saving_score, passing_score, stability_score)
+        }
+
+    @classmethod
+    def _identify_gk_strengths(cls, saving: float, passing: float, stability: float) -> List[str]:
+        """골키퍼 강점 식별"""
+        strengths = []
+        if saving >= 80:
+            strengths.append("🔥 뛰어난 선방 능력")
+        if passing >= 75:
+            strengths.append("⚽ 우수한 발 기술과 배급")
+        if stability >= 85:
+            strengths.append("🛡️ 안정적이고 일관된 퍼포먼스")
+        return strengths if strengths else ["기본기 탄탄"]
+
+    @classmethod
+    def _identify_gk_weaknesses(cls, saving: float, passing: float, stability: float) -> List[str]:
+        """골키퍼 개선 필요 부분 식별"""
+        weaknesses = []
+        if saving < 60:
+            weaknesses.append("선방 능력 향상 필요 - 위치 선정과 반응 속도 개선")
+        if passing < 50:
+            weaknesses.append("발 능력 개선 필요 - 패스 정확도 훈련")
+        if stability < 60:
+            weaknesses.append("안정성 개선 필요 - 실수 최소화 및 집중력 유지")
+        return weaknesses if weaknesses else []
+
+    # ========== CENTER BACK (CB) ==========
+    @classmethod
+    def _evaluate_center_back(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        중앙 수비수 전문 평가
+
+        핵심 지표:
+        - 태클 & 볼 차단 (20%)
+        - 공중볼 우위 (15%)
+        - 수비 안정성 (15%)
+        - 패스 능력 (20%)
+        - 전진 패스 (5%)
+        - 일관성 (15%)
+        - 평점 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 수비 능력 (50%)
+        # 태클 & 볼 차단
+        total_tackle_attempts = sum(s.get('tackle_attempts', 0) for s in stats)
+        total_tackle_success = sum(s.get('tackle_success', 0) for s in stats)
+        tackle_success_rate = (total_tackle_success / total_tackle_attempts * 100) if total_tackle_attempts > 0 else 0
+
+        total_blocks = sum(s.get('blocks', 0) for s in stats)
+        total_interceptions = sum(s.get('interceptions') or 0 for s in stats)
+
+        defensive_actions = (total_tackle_success + total_blocks + total_interceptions) / num_matches
+
+        tackle_score = min(100, (
+            (tackle_success_rate / 80 * 50) +  # 80% 성공률 = 50점
+            (defensive_actions / 8 * 50)  # 경기당 8회 = 50점
+        ))
+
+        # 공중볼
+        total_aerial_success = sum(s.get('aerial_success', 0) for s in stats)
+        aerial_per_game = total_aerial_success / num_matches
+        aerial_score = min(100, aerial_per_game / 6 * 100)  # 경기당 6회 = 100점
+
+        # 수비 안정성
+        total_fouls = sum(s.get('fouls') or 0 for s in stats)
+        total_yellow_cards = sum(s.get('yellow_cards', 0) for s in stats)
+        total_red_cards = sum(s.get('red_cards', 0) for s in stats)
+
+        foul_to_tackle_ratio = total_fouls / total_tackle_attempts if total_tackle_attempts > 0 else 0
+        discipline_score = max(0, 100 - (foul_to_tackle_ratio * 100) - (total_yellow_cards * 5) - (total_red_cards * 20))
+
+        # B. 빌드업 능력 (25%)
+        total_pass_attempts = sum(s.get('pass_attempts', 0) for s in stats)
+        total_pass_success = sum(s.get('pass_success', 0) for s in stats)
+        pass_accuracy = (total_pass_success / total_pass_attempts * 100) if total_pass_attempts > 0 else 0
+
+        total_long_pass_success = sum(s.get('long_pass_success', 0) for s in stats)
+
+        passing_score = min(100, (
+            (pass_accuracy / 85 * 70) +  # CB는 85% 이상 필요
+            (total_long_pass_success / num_matches / 3 * 30)  # 경기당 3개 긴패스 = 30점
+        ))
+
+        # 전진 패스
+        total_through_pass = sum(s.get('through_pass_success', 0) for s in stats)
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        forward_pass_score = min(100, (total_through_pass + total_assists * 3) / num_matches * 20)
+
+        # C. 일관성
+        ratings = [s.get('rating', 7.0) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        consistency_score = max(0, 100 - (rating_variance * 40))
+
+        # D. 평점
+        avg_rating = statistics.mean(ratings) if ratings else 7.0
+        rating_score = min(100, (avg_rating - 5.5) / 2.5 * 100)
+
+        # 최종 종합 점수
+        final_score = (
+            tackle_score * 0.20 +
+            aerial_score * 0.15 +
+            discipline_score * 0.15 +
+            passing_score * 0.20 +
+            forward_pass_score * 0.05 +
+            consistency_score * 0.15 +
+            rating_score * 0.10
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'defensive_ability': {
+                    'tackle_score': round(tackle_score, 1),
+                    'tackle_success_rate': round(tackle_success_rate, 1),
+                    'defensive_actions_per_game': round(defensive_actions, 1),
+                    'blocks': total_blocks,
+                    'interceptions': total_interceptions
+                },
+                'aerial_dominance': {
+                    'score': round(aerial_score, 1),
+                    'aerial_wins_per_game': round(aerial_per_game, 1)
+                },
+                'discipline': {
+                    'score': round(discipline_score, 1),
+                    'fouls': total_fouls,
+                    'yellow_cards': total_yellow_cards,
+                    'red_cards': total_red_cards
+                },
+                'passing': {
+                    'score': round(passing_score, 1),
+                    'pass_accuracy': round(pass_accuracy, 1),
+                    'long_passes': total_long_pass_success
+                },
+                'forward_contribution': {
+                    'score': round(forward_pass_score, 1),
+                    'through_passes': total_through_pass,
+                    'assists': total_assists
+                },
+                'consistency': {
+                    'score': round(consistency_score, 1),
+                    'rating_variance': round(rating_variance, 2)
+                },
+                'rating': {
+                    'score': round(rating_score, 1),
+                    'avg_rating': round(avg_rating, 2)
+                }
+            },
+            'key_strengths': cls._identify_cb_strengths(tackle_score, aerial_score, passing_score),
+            'areas_for_improvement': cls._identify_cb_weaknesses(tackle_score, discipline_score, passing_score)
+        }
+
+    @classmethod
+    def _identify_cb_strengths(cls, tackle: float, aerial: float, passing: float) -> List[str]:
+        strengths = []
+        if tackle >= 80:
+            strengths.append("🛡️ 강력한 태클과 볼 차단")
+        if aerial >= 75:
+            strengths.append("🎯 공중볼 지배력")
+        if passing >= 75:
+            strengths.append("⚽ 뛰어난 빌드업 능력")
+        return strengths if strengths else ["안정적인 수비"]
+
+    @classmethod
+    def _identify_cb_weaknesses(cls, tackle: float, discipline: float, passing: float) -> List[str]:
+        weaknesses = []
+        if tackle < 60:
+            weaknesses.append("태클 정확도 향상 필요")
+        if discipline < 70:
+            weaknesses.append("불필요한 파울 줄이기 - 수비 타이밍 개선")
+        if passing < 60:
+            weaknesses.append("패스 정확도 향상 - 빌드업 훈련 필요")
+        return weaknesses if weaknesses else []
+
+    # ========== STRIKER (ST) ==========
+    @classmethod
+    def _evaluate_striker(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        스트라이커 전문 평가
+
+        핵심 지표:
+        - 득점 능력 (40%)
+        - 슈팅 센스 (15%)
+        - 연계 플레이 (20%)
+        - 공중볼 지배 (15%)
+        - 일관성 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 골 결정력 (55%)
+        total_goals = sum(s.get('goals', 0) for s in stats)
+        goals_per_game = total_goals / num_matches if num_matches > 0 else 0
+
+        total_shots = sum(s.get('shots', 0) for s in stats)
+        shot_conversion = (total_goals / total_shots * 100) if total_shots > 0 else 0
+
+        total_xg = sum(s.get('xg') or 0 for s in stats)
+        goals_vs_xg = total_goals - total_xg if total_xg > 0 else 0
+
+        # 득점 능력 점수
+        scoring_score = min(100, (
+            (goals_per_game / 1.0 * 50) +  # 경기당 1골 = 50점
+            (shot_conversion / 25 * 30) +  # 25% 전환율 = 30점
+            (max(0, goals_vs_xg) * 5)  # xG 대비 초과 득점
+        ))
+
+        # 슈팅 센스
+        total_shots_on_target = sum(s.get('shots_on_target', 0) for s in stats)
+        shot_accuracy = (total_shots_on_target / total_shots * 100) if total_shots > 0 else 0
+
+        shooting_sense_score = min(100, shot_accuracy / 60 * 100)  # 60% 정확도 = 100점
+
+        # B. 연계 플레이 (20%)
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        total_key_passes = sum(s.get('key_passes') or 0 for s in stats)
+
+        link_play_score = min(100, (
+            (total_assists / num_matches * 50) +  # 경기당 0.5 어시스트 = 25점
+            (total_key_passes / num_matches / 2 * 50)  # 경기당 2개 키패스 = 50점
+        ))
+
+        # C. 공중볼 지배 (15%)
+        total_aerial_success = sum(s.get('aerial_success', 0) for s in stats)
+        aerial_per_game = total_aerial_success / num_matches
+        aerial_score = min(100, aerial_per_game / 4 * 100)  # 경기당 4회 = 100점
+
+        # D. 일관성 (10%)
+        ratings = [s.get('rating', 7.0) for s in stats]
+        consecutive_scoring_games = cls._count_consecutive_scoring(stats)
+        consistency_score = min(100, consecutive_scoring_games / (num_matches * 0.5) * 100)
+
+        # 최종 종합 점수
+        final_score = (
+            scoring_score * 0.40 +
+            shooting_sense_score * 0.15 +
+            link_play_score * 0.20 +
+            aerial_score * 0.15 +
+            consistency_score * 0.10
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'scoring_ability': {
+                    'score': round(scoring_score, 1),
+                    'goals_per_game': round(goals_per_game, 2),
+                    'shot_conversion': round(shot_conversion, 1),
+                    'goals_vs_xg': round(goals_vs_xg, 2),
+                    'total_goals': total_goals
+                },
+                'shooting_sense': {
+                    'score': round(shooting_sense_score, 1),
+                    'shot_accuracy': round(shot_accuracy, 1)
+                },
+                'link_play': {
+                    'score': round(link_play_score, 1),
+                    'assists': total_assists,
+                    'key_passes': total_key_passes
+                },
+                'aerial_dominance': {
+                    'score': round(aerial_score, 1),
+                    'aerial_wins_per_game': round(aerial_per_game, 1)
+                },
+                'consistency': {
+                    'score': round(consistency_score, 1),
+                    'consecutive_scoring_games': consecutive_scoring_games
+                }
+            },
+            'key_strengths': cls._identify_st_strengths(scoring_score, link_play_score, aerial_score),
+            'areas_for_improvement': cls._identify_st_weaknesses(scoring_score, shooting_sense_score, consistency_score)
+        }
+
+    @classmethod
+    def _count_consecutive_scoring(cls, stats: List[Dict]) -> int:
+        """연속 득점 경기 수 계산"""
+        max_consecutive = 0
+        current_consecutive = 0
+
+        for stat in stats:
+            if stat.get('goals', 0) > 0:
+                current_consecutive += 1
+                max_consecutive = max(max_consecutive, current_consecutive)
+            else:
+                current_consecutive = 0
+
+        return max_consecutive
+
+    @classmethod
+    def _identify_st_strengths(cls, scoring: float, link: float, aerial: float) -> List[str]:
+        strengths = []
+        if scoring >= 80:
+            strengths.append("🔥 뛰어난 골 결정력")
+        if link >= 75:
+            strengths.append("🤝 우수한 연계 플레이")
+        if aerial >= 75:
+            strengths.append("🎯 강력한 공중볼 능력")
+        return strengths if strengths else ["기본기 탄탄한 공격수"]
+
+    @classmethod
+    def _identify_st_weaknesses(cls, scoring: float, shooting: float, consistency: float) -> List[str]:
+        weaknesses = []
+        if scoring < 60:
+            weaknesses.append("골 결정력 향상 필요 - 슈팅 훈련 집중")
+        if shooting < 50:
+            weaknesses.append("슈팅 정확도 개선 - 골문 맞추기 훈련")
+        if consistency < 50:
+            weaknesses.append("일관성 개선 - 꾸준한 득점 필요")
+        return weaknesses if weaknesses else []
+
+    # ========== FULLBACK / WINGBACK (FB, WB) ==========
+    @classmethod
+    def _evaluate_fullback(cls, stats: List[Dict], is_wingback: bool = False) -> Dict[str, Any]:
+        """
+        풀백/윙백 전문 평가
+
+        핵심 지표:
+        - 수비 능력 (35%): 1대1 수비, 측면 봉쇄, 위치 선정
+        - 공격 기여 (40%): 크로스, 전진 플레이, 오버래핑
+        - 체력 & 일관성 (15%)
+        - 평점 기반 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 수비 능력 (35%)
+        # 1대1 수비
+        total_tackle_attempts = sum(s.get('tackle_attempts', 0) for s in stats)
+        total_tackle_success = sum(s.get('tackle_success', 0) for s in stats)
+        tackle_success_rate = (total_tackle_success / total_tackle_attempts * 100) if total_tackle_attempts > 0 else 0
+
+        total_dribble_stops = sum(s.get('dribble_stops') or 0 for s in stats)  # 드리블 저지
+        one_on_one_score = min(100, (
+            (tackle_success_rate / 75 * 60) +  # 75% 성공률 = 60점
+            (total_dribble_stops / num_matches / 3 * 40)  # 경기당 3회 저지 = 40점
+        ))
+
+        # 측면 봉쇄
+        total_interceptions = sum(s.get('interceptions') or 0 for s in stats)
+        total_blocks = sum(s.get('blocks', 0) for s in stats)
+        wing_defense_score = min(100, (total_interceptions + total_blocks) / num_matches / 4 * 100)  # 경기당 4회 = 100점
+
+        # 수비 위치 선정 (파울 최소화)
+        total_fouls = sum(s.get('fouls') or 0 for s in stats)
+        total_yellow_cards = sum(s.get('yellow_cards', 0) for s in stats)
+        positioning_score = max(0, 100 - (total_fouls / num_matches * 10) - (total_yellow_cards * 5))
+
+        # B. 공격 기여 (40%)
+        # 크로스 & 찬스 창출
+        total_crosses = sum(s.get('crosses') or 0 for s in stats)
+        total_cross_success = sum(s.get('cross_success') or 0 for s in stats)
+        cross_accuracy = (total_cross_success / total_crosses * 100) if total_crosses > 0 else 0
+
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        total_key_passes = sum(s.get('key_passes') or 0 for s in stats)
+
+        crossing_score = min(100, (
+            (cross_accuracy / 35 * 40) +  # 35% 정확도 = 40점
+            (total_assists / num_matches * 100) +  # 경기당 0.3 어시스트 = 30점
+            (total_key_passes / num_matches / 2 * 30)  # 경기당 2개 키패스 = 30점
+        ))
+
+        # 전진 플레이
+        total_dribble_attempts = sum(s.get('dribble_attempts', 0) for s in stats)
+        total_dribble_success = sum(s.get('dribble_success', 0) for s in stats)
+        dribble_success_rate = (total_dribble_success / total_dribble_attempts * 100) if total_dribble_attempts > 0 else 0
+
+        total_forward_passes = sum(s.get('forward_passes') or 0 for s in stats)
+        forward_play_score = min(100, (
+            (dribble_success_rate / 60 * 50) +  # 60% 성공률 = 50점
+            (total_forward_passes / num_matches / 10 * 50)  # 경기당 10개 = 50점
+        ))
+
+        # 오버래핑 (공격 가담)
+        total_shots = sum(s.get('shots', 0) for s in stats)
+        overlapping_score = min(100, total_shots / num_matches * 30)  # 경기당 3.3회 슈팅 = 100점
+
+        # C. 체력 & 일관성 (15%)
+        ratings = [s.get('rating', 7.0) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        stamina_consistency_score = max(0, 100 - (rating_variance * 35))
+
+        # D. 평점 (10%)
+        avg_rating = statistics.mean(ratings) if ratings else 7.0
+        rating_score = min(100, (avg_rating - 5.5) / 2.5 * 100)
+
+        # 최종 종합 점수
+        # WB는 공격 가중치 조금 더 높게
+        if is_wingback:
+            final_score = (
+                one_on_one_score * 0.12 +
+                wing_defense_score * 0.08 +
+                positioning_score * 0.10 +
+                crossing_score * 0.22 +
+                forward_play_score * 0.18 +
+                overlapping_score * 0.05 +
+                stamina_consistency_score * 0.15 +
+                rating_score * 0.10
+            )
+        else:  # FB
+            final_score = (
+                one_on_one_score * 0.15 +
+                wing_defense_score * 0.10 +
+                positioning_score * 0.10 +
+                crossing_score * 0.20 +
+                forward_play_score * 0.15 +
+                overlapping_score * 0.05 +
+                stamina_consistency_score * 0.15 +
+                rating_score * 0.10
+            )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'defensive_ability': {
+                    'one_on_one_score': round(one_on_one_score, 1),
+                    'tackle_success_rate': round(tackle_success_rate, 1),
+                    'wing_defense_score': round(wing_defense_score, 1),
+                    'positioning_score': round(positioning_score, 1)
+                },
+                'attacking_contribution': {
+                    'crossing_score': round(crossing_score, 1),
+                    'cross_accuracy': round(cross_accuracy, 1),
+                    'assists': total_assists,
+                    'forward_play_score': round(forward_play_score, 1),
+                    'dribble_success_rate': round(dribble_success_rate, 1)
+                },
+                'stamina_consistency': {
+                    'score': round(stamina_consistency_score, 1),
+                    'rating_variance': round(rating_variance, 2)
+                },
+                'rating': {
+                    'score': round(rating_score, 1),
+                    'avg_rating': round(avg_rating, 2)
+                }
+            },
+            'key_strengths': cls._identify_fb_strengths(crossing_score, one_on_one_score, forward_play_score),
+            'areas_for_improvement': cls._identify_fb_weaknesses(crossing_score, one_on_one_score, positioning_score)
+        }
+
+    @classmethod
+    def _identify_fb_strengths(cls, crossing: float, defense: float, forward: float) -> List[str]:
+        strengths = []
+        if crossing >= 75:
+            strengths.append("🎯 뛰어난 크로스와 찬스 메이킹")
+        if defense >= 75:
+            strengths.append("🛡️ 강력한 1대1 수비")
+        if forward >= 75:
+            strengths.append("⚡ 적극적인 공격 가담")
+        return strengths if strengths else ["균형잡힌 풀백"]
+
+    @classmethod
+    def _identify_fb_weaknesses(cls, crossing: float, defense: float, positioning: float) -> List[str]:
+        weaknesses = []
+        if crossing < 55:
+            weaknesses.append("크로스 정확도 향상 필요")
+        if defense < 60:
+            weaknesses.append("1대1 수비 능력 개선")
+        if positioning < 65:
+            weaknesses.append("수비 위치 선정 개선 - 불필요한 파울 줄이기")
+        return weaknesses if weaknesses else []
+
+    # ========== DEFENSIVE MIDFIELDER (CDM) ==========
+    @classmethod
+    def _evaluate_defensive_midfielder(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        수비형 미드필더 전문 평가
+
+        핵심 지표:
+        - 수비 차단 (40%): 볼 탈취, 공중볼, 압박
+        - 패스 & 빌드업 (35%): 배급 능력, 전환
+        - 일관성 & 규율 (15%)
+        - 평점 기반 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 수비 차단 (40%)
+        # 볼 탈취
+        total_tackle_attempts = sum(s.get('tackle_attempts', 0) for s in stats)
+        total_tackle_success = sum(s.get('tackle_success', 0) for s in stats)
+        tackle_success_rate = (total_tackle_success / total_tackle_attempts * 100) if total_tackle_attempts > 0 else 0
+
+        total_interceptions = sum(s.get('interceptions') or 0 for s in stats)
+        total_blocks = sum(s.get('blocks', 0) for s in stats)
+
+        ball_winning_score = min(100, (
+            (tackle_success_rate / 80 * 50) +  # 80% 성공률 = 50점
+            ((total_interceptions + total_blocks) / num_matches / 6 * 50)  # 경기당 6회 = 50점
+        ))
+
+        # 공중볼 지배
+        total_aerial_success = sum(s.get('aerial_success', 0) for s in stats)
+        aerial_score = min(100, total_aerial_success / num_matches / 4 * 100)  # 경기당 4회 = 100점
+
+        # 압박 강도
+        defensive_actions = (total_tackle_attempts + total_interceptions + total_blocks) / num_matches
+        total_fouls = sum(s.get('fouls') or 0 for s in stats)
+        foul_efficiency = total_fouls / defensive_actions if defensive_actions > 0 else 0
+        pressing_score = max(0, 100 - (foul_efficiency * 100))  # 파울 대비 효율
+
+        # B. 패스 & 빌드업 (35%)
+        # 배급 능력
+        total_pass_attempts = sum(s.get('pass_attempts', 0) for s in stats)
+        total_pass_success = sum(s.get('pass_success', 0) for s in stats)
+        pass_accuracy = (total_pass_success / total_pass_attempts * 100) if total_pass_attempts > 0 else 0
+
+        avg_passes_per_game = total_pass_attempts / num_matches if num_matches > 0 else 0
+        distribution_score = min(100, (
+            (pass_accuracy / 85 * 60) +  # 85% 정확도 = 60점
+            (avg_passes_per_game / 50 * 40)  # 경기당 50개 = 40점
+        ))
+
+        # 전환 플레이
+        total_long_pass_success = sum(s.get('long_pass_success', 0) for s in stats)
+        total_through_pass_success = sum(s.get('through_pass_success', 0) for s in stats)
+        transition_score = min(100, (total_long_pass_success + total_through_pass_success * 2) / num_matches / 4 * 100)
+
+        # C. 일관성 & 규율 (15%)
+        ratings = [s.get('rating', 7.0) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+
+        total_yellow_cards = sum(s.get('yellow_cards', 0) for s in stats)
+        total_red_cards = sum(s.get('red_cards', 0) for s in stats)
+
+        discipline_score = max(0, 100 - (rating_variance * 30) - (total_yellow_cards * 3) - (total_red_cards * 15))
+
+        # D. 평점 (10%)
+        avg_rating = statistics.mean(ratings) if ratings else 7.0
+        rating_score = min(100, (avg_rating - 5.5) / 2.5 * 100)
+
+        # 최종 종합 점수
+        final_score = (
+            ball_winning_score * 0.25 +
+            aerial_score * 0.10 +
+            pressing_score * 0.05 +
+            distribution_score * 0.25 +
+            transition_score * 0.10 +
+            discipline_score * 0.15 +
+            rating_score * 0.10
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'ball_winning': {
+                    'score': round(ball_winning_score, 1),
+                    'tackle_success_rate': round(tackle_success_rate, 1),
+                    'interceptions': total_interceptions,
+                    'blocks': total_blocks
+                },
+                'aerial_dominance': {
+                    'score': round(aerial_score, 1),
+                    'aerial_wins_per_game': round(total_aerial_success / num_matches, 1)
+                },
+                'pressing': {
+                    'score': round(pressing_score, 1),
+                    'defensive_actions_per_game': round(defensive_actions, 1)
+                },
+                'distribution': {
+                    'score': round(distribution_score, 1),
+                    'pass_accuracy': round(pass_accuracy, 1),
+                    'avg_passes_per_game': round(avg_passes_per_game, 1)
+                },
+                'transition_play': {
+                    'score': round(transition_score, 1),
+                    'long_passes': total_long_pass_success,
+                    'through_passes': total_through_pass_success
+                },
+                'discipline_consistency': {
+                    'score': round(discipline_score, 1),
+                    'yellow_cards': total_yellow_cards,
+                    'red_cards': total_red_cards
+                },
+                'rating': {
+                    'score': round(rating_score, 1),
+                    'avg_rating': round(avg_rating, 2)
+                }
+            },
+            'key_strengths': cls._identify_cdm_strengths(ball_winning_score, distribution_score, discipline_score),
+            'areas_for_improvement': cls._identify_cdm_weaknesses(ball_winning_score, distribution_score, discipline_score)
+        }
+
+    @classmethod
+    def _identify_cdm_strengths(cls, ball_winning: float, distribution: float, discipline: float) -> List[str]:
+        strengths = []
+        if ball_winning >= 80:
+            strengths.append("🛡️ 뛰어난 볼 탈취 능력")
+        if distribution >= 80:
+            strengths.append("⚽ 안정적인 배급 플레이")
+        if discipline >= 85:
+            strengths.append("📊 일관되고 규율있는 플레이")
+        return strengths if strengths else ["믿음직한 수비형 미드필더"]
+
+    @classmethod
+    def _identify_cdm_weaknesses(cls, ball_winning: float, distribution: float, discipline: float) -> List[str]:
+        weaknesses = []
+        if ball_winning < 60:
+            weaknesses.append("수비 차단 능력 향상 필요")
+        if distribution < 65:
+            weaknesses.append("패스 정확도 개선 - 배급 안정성 향상")
+        if discipline < 65:
+            weaknesses.append("불필요한 파울과 경고 줄이기")
+        return weaknesses if weaknesses else []
+
+    # ========== CENTRAL MIDFIELDER (CM) ==========
+    @classmethod
+    def _evaluate_central_midfielder(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        중앙 미드필더 전문 평가
+
+        핵심 지표:
+        - 패스 & 창조력 (40%): 패스 마스터, 찬스 창출
+        - 수비 기여 (25%)
+        - 공격 기여 (20%)
+        - 일관성 (10%)
+        - 평점 (5%)
+        """
+        num_matches = len(stats)
+
+        # A. 패스 & 창조력 (40%)
+        # 패스 마스터
+        total_pass_attempts = sum(s.get('pass_attempts', 0) for s in stats)
+        total_pass_success = sum(s.get('pass_success', 0) for s in stats)
+        pass_accuracy = (total_pass_success / total_pass_attempts * 100) if total_pass_attempts > 0 else 0
+
+        avg_passes_per_game = total_pass_attempts / num_matches if num_matches > 0 else 0
+
+        total_short_pass_success = sum(s.get('short_pass_success', 0) for s in stats)
+        total_long_pass_success = sum(s.get('long_pass_success', 0) for s in stats)
+
+        passing_mastery_score = min(100, (
+            (pass_accuracy / 80 * 50) +  # 80% 정확도 = 50점
+            (avg_passes_per_game / 60 * 30) +  # 경기당 60개 = 30점
+            ((total_short_pass_success + total_long_pass_success) / total_pass_attempts * 20) if total_pass_attempts > 0 else 0
+        ))
+
+        # 찬스 창출
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        total_key_passes = sum(s.get('key_passes') or 0 for s in stats)
+        total_through_pass_success = sum(s.get('through_pass_success', 0) for s in stats)
+
+        chance_creation_score = min(100, (
+            (total_assists / num_matches * 80) +  # 경기당 0.5 어시스트 = 40점
+            (total_key_passes / num_matches / 3 * 40) +  # 경기당 3개 = 40점
+            (total_through_pass_success / num_matches * 20)  # 경기당 1개 = 20점
+        ))
+
+        # B. 수비 기여 (25%)
+        total_tackle_success = sum(s.get('tackle_success', 0) for s in stats)
+        total_interceptions = sum(s.get('interceptions') or 0 for s in stats)
+
+        defensive_contribution_score = min(100, (total_tackle_success + total_interceptions) / num_matches / 5 * 100)  # 경기당 5회 = 100점
+
+        # C. 공격 기여 (20%)
+        total_goals = sum(s.get('goals', 0) for s in stats)
+        total_shots = sum(s.get('shots', 0) for s in stats)
+        total_shots_on_target = sum(s.get('shots_on_target', 0) for s in stats)
+
+        shot_accuracy = (total_shots_on_target / total_shots * 100) if total_shots > 0 else 0
+
+        attacking_contribution_score = min(100, (
+            (total_goals / num_matches * 80) +  # 경기당 0.3골 = 24점
+            (shot_accuracy / 50 * 20)  # 50% 정확도 = 20점
+        ))
+
+        # D. 일관성 (10%)
+        ratings = [s.get('rating', 7.0) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        consistency_score = max(0, 100 - (rating_variance * 35))
+
+        # E. 평점 (5%)
+        avg_rating = statistics.mean(ratings) if ratings else 7.0
+        rating_score = min(100, (avg_rating - 6.0) / 2.0 * 100)
+
+        # 최종 종합 점수
+        final_score = (
+            passing_mastery_score * 0.25 +
+            chance_creation_score * 0.15 +
+            defensive_contribution_score * 0.25 +
+            attacking_contribution_score * 0.20 +
+            consistency_score * 0.10 +
+            rating_score * 0.05
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'passing_mastery': {
+                    'score': round(passing_mastery_score, 1),
+                    'pass_accuracy': round(pass_accuracy, 1),
+                    'avg_passes_per_game': round(avg_passes_per_game, 1)
+                },
+                'chance_creation': {
+                    'score': round(chance_creation_score, 1),
+                    'assists': total_assists,
+                    'key_passes': total_key_passes,
+                    'through_passes': total_through_pass_success
+                },
+                'defensive_contribution': {
+                    'score': round(defensive_contribution_score, 1),
+                    'tackles': total_tackle_success,
+                    'interceptions': total_interceptions
+                },
+                'attacking_contribution': {
+                    'score': round(attacking_contribution_score, 1),
+                    'goals': total_goals,
+                    'shot_accuracy': round(shot_accuracy, 1)
+                },
+                'consistency': {
+                    'score': round(consistency_score, 1),
+                    'rating_variance': round(rating_variance, 2)
+                },
+                'rating': {
+                    'score': round(rating_score, 1),
+                    'avg_rating': round(avg_rating, 2)
+                }
+            },
+            'key_strengths': cls._identify_cm_strengths(passing_mastery_score, chance_creation_score, defensive_contribution_score),
+            'areas_for_improvement': cls._identify_cm_weaknesses(passing_mastery_score, defensive_contribution_score, attacking_contribution_score)
+        }
+
+    @classmethod
+    def _identify_cm_strengths(cls, passing: float, chance_creation: float, defense: float) -> List[str]:
+        strengths = []
+        if passing >= 80:
+            strengths.append("⚽ 뛰어난 패스 능력")
+        if chance_creation >= 75:
+            strengths.append("🎯 우수한 찬스 메이킹")
+        if defense >= 75:
+            strengths.append("🛡️ 훌륭한 수비 지원")
+        return strengths if strengths else ["균형잡힌 미드필더"]
+
+    @classmethod
+    def _identify_cm_weaknesses(cls, passing: float, defense: float, attack: float) -> List[str]:
+        weaknesses = []
+        if passing < 65:
+            weaknesses.append("패스 정확도 향상 필요")
+        if defense < 55:
+            weaknesses.append("수비 기여도 향상 - 볼 탈취 능력 개선")
+        if attack < 50:
+            weaknesses.append("공격 기여 개선 - 득점 능력 향상")
+        return weaknesses if weaknesses else []
+
+    # ========== ATTACKING MIDFIELDER (CAM) ==========
+    @classmethod
+    def _evaluate_attacking_midfielder(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        공격형 미드필더 전문 평가
+
+        핵심 지표:
+        - 창조력 (45%): 어시스트 & 찬스 창출, 패스 센스
+        - 골 결정력 (30%)
+        - 드리블 & 돌파 (15%)
+        - 일관성 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 창조력 (45%)
+        # 어시스트 & 찬스 창출
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        total_key_passes = sum(s.get('key_passes') or 0 for s in stats)
+        total_through_pass_success = sum(s.get('through_pass_success', 0) for s in stats)
+
+        creativity_score = min(100, (
+            (total_assists / num_matches * 100) +  # 경기당 0.5 어시스트 = 50점
+            (total_key_passes / num_matches / 3 * 30) +  # 경기당 3개 = 30점
+            (total_through_pass_success / num_matches * 20)  # 경기당 1개 = 20점
+        ))
+
+        # 패스 센스
+        total_pass_attempts = sum(s.get('pass_attempts', 0) for s in stats)
+        total_pass_success = sum(s.get('pass_success', 0) for s in stats)
+        pass_accuracy = (total_pass_success / total_pass_attempts * 100) if total_pass_attempts > 0 else 0
+
+        # 최종 1/3 지역 패스 (final third passes)
+        pass_sense_score = min(100, pass_accuracy / 75 * 100)  # 75% 정확도 = 100점
+
+        # B. 골 결정력 (30%)
+        total_goals = sum(s.get('goals', 0) for s in stats)
+        goals_per_game = total_goals / num_matches if num_matches > 0 else 0
+
+        total_shots = sum(s.get('shots', 0) for s in stats)
+        shot_conversion = (total_goals / total_shots * 100) if total_shots > 0 else 0
+
+        total_xg = sum(s.get('xg') or 0 for s in stats)
+        goals_vs_xg = total_goals - total_xg if total_xg > 0 else 0
+
+        finishing_score = min(100, (
+            (goals_per_game / 0.5 * 50) +  # 경기당 0.5골 = 50점
+            (shot_conversion / 20 * 30) +  # 20% 전환율 = 30점
+            (max(0, goals_vs_xg) * 5)  # xG 초과
+        ))
+
+        # C. 드리블 & 돌파 (15%)
+        total_dribble_attempts = sum(s.get('dribble_attempts', 0) for s in stats)
+        total_dribble_success = sum(s.get('dribble_success', 0) for s in stats)
+        dribble_success_rate = (total_dribble_success / total_dribble_attempts * 100) if total_dribble_attempts > 0 else 0
+
+        dribbling_score = min(100, (
+            (dribble_success_rate / 60 * 70) +  # 60% 성공률 = 70점
+            (total_dribble_success / num_matches / 3 * 30)  # 경기당 3회 = 30점
+        ))
+
+        # D. 일관성 (10%)
+        ratings = [s.get('rating', 7.5) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        consistency_score = max(0, 100 - (rating_variance * 30))
+
+        # 최종 종합 점수
+        final_score = (
+            creativity_score * 0.30 +
+            pass_sense_score * 0.15 +
+            finishing_score * 0.30 +
+            dribbling_score * 0.15 +
+            consistency_score * 0.10
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'creativity': {
+                    'score': round(creativity_score, 1),
+                    'assists': total_assists,
+                    'key_passes': total_key_passes,
+                    'through_passes': total_through_pass_success
+                },
+                'passing_sense': {
+                    'score': round(pass_sense_score, 1),
+                    'pass_accuracy': round(pass_accuracy, 1)
+                },
+                'finishing': {
+                    'score': round(finishing_score, 1),
+                    'goals': total_goals,
+                    'goals_per_game': round(goals_per_game, 2),
+                    'shot_conversion': round(shot_conversion, 1)
+                },
+                'dribbling': {
+                    'score': round(dribbling_score, 1),
+                    'dribble_success_rate': round(dribble_success_rate, 1)
+                },
+                'consistency': {
+                    'score': round(consistency_score, 1),
+                    'rating_variance': round(rating_variance, 2)
+                }
+            },
+            'key_strengths': cls._identify_cam_strengths(creativity_score, finishing_score, dribbling_score),
+            'areas_for_improvement': cls._identify_cam_weaknesses(creativity_score, finishing_score, dribbling_score)
+        }
+
+    @classmethod
+    def _identify_cam_strengths(cls, creativity: float, finishing: float, dribbling: float) -> List[str]:
+        strengths = []
+        if creativity >= 80:
+            strengths.append("🎨 탁월한 창조력과 찬스 메이킹")
+        if finishing >= 75:
+            strengths.append("⚽ 우수한 득점 능력")
+        if dribbling >= 75:
+            strengths.append("💨 뛰어난 드리블과 돌파")
+        return strengths if strengths else ["공격적인 플레이메이커"]
+
+    @classmethod
+    def _identify_cam_weaknesses(cls, creativity: float, finishing: float, dribbling: float) -> List[str]:
+        weaknesses = []
+        if creativity < 60:
+            weaknesses.append("찬스 창출 능력 향상 - 킬패스와 어시스트 개선")
+        if finishing < 55:
+            weaknesses.append("골 결정력 향상 - 슈팅 정확도 훈련")
+        if dribbling < 55:
+            weaknesses.append("드리블 성공률 개선")
+        return weaknesses if weaknesses else []
+
+    # ========== WINGER (W, WM) ==========
+    @classmethod
+    def _evaluate_winger(cls, stats: List[Dict]) -> Dict[str, Any]:
+        """
+        윙어 전문 평가
+
+        핵심 지표:
+        - 골 & 찬스 창출 (45%): 득점력, 어시스트
+        - 드리블 & 돌파 (30%)
+        - 측면 활동 (15%)
+        - 일관성 (10%)
+        """
+        num_matches = len(stats)
+
+        # A. 골 & 찬스 창출 (45%)
+        # 득점력
+        total_goals = sum(s.get('goals', 0) for s in stats)
+        goals_per_game = total_goals / num_matches if num_matches > 0 else 0
+
+        total_shots = sum(s.get('shots', 0) for s in stats)
+        shot_conversion = (total_goals / total_shots * 100) if total_shots > 0 else 0
+
+        total_xg = sum(s.get('xg') or 0 for s in stats)
+        goals_vs_xg = total_goals - total_xg if total_xg > 0 else 0
+
+        scoring_score = min(100, (
+            (goals_per_game / 0.7 * 50) +  # 경기당 0.7골 = 50점
+            (shot_conversion / 22 * 30) +  # 22% 전환율 = 30점
+            (max(0, goals_vs_xg) * 5)
+        ))
+
+        # 어시스트
+        total_assists = sum(s.get('assists', 0) for s in stats)
+        total_crosses = sum(s.get('crosses') or 0 for s in stats)
+        total_cross_success = sum(s.get('cross_success') or 0 for s in stats)
+        cross_accuracy = (total_cross_success / total_crosses * 100) if total_crosses > 0 else 0
+
+        total_key_passes = sum(s.get('key_passes') or 0 for s in stats)
+
+        assist_score = min(100, (
+            (total_assists / num_matches * 80) +  # 경기당 0.5 어시스트 = 40점
+            (cross_accuracy / 30 * 40) +  # 30% 정확도 = 40점
+            (total_key_passes / num_matches / 2 * 20)  # 경기당 2개 = 20점
+        ))
+
+        # B. 드리블 & 돌파 (30%)
+        total_dribble_attempts = sum(s.get('dribble_attempts', 0) for s in stats)
+        total_dribble_success = sum(s.get('dribble_success', 0) for s in stats)
+        dribble_success_rate = (total_dribble_success / total_dribble_attempts * 100) if total_dribble_attempts > 0 else 0
+
+        dribble_per_game = total_dribble_success / num_matches
+
+        dribbling_score = min(100, (
+            (dribble_success_rate / 55 * 60) +  # 55% 성공률 = 60점 (윙어는 더 많이 시도)
+            (dribble_per_game / 5 * 40)  # 경기당 5회 = 40점
+        ))
+
+        # C. 측면 활동 (15%)
+        crosses_per_game = total_crosses / num_matches
+        wing_activity_score = min(100, crosses_per_game / 6 * 100)  # 경기당 6회 크로스 = 100점
+
+        # D. 일관성 (10%)
+        ratings = [s.get('rating', 7.0) for s in stats]
+        rating_variance = statistics.variance(ratings) if len(ratings) > 1 else 0
+        consistency_score = max(0, 100 - (rating_variance * 30))
+
+        # 최종 종합 점수
+        final_score = (
+            scoring_score * 0.25 +
+            assist_score * 0.20 +
+            dribbling_score * 0.30 +
+            wing_activity_score * 0.15 +
+            consistency_score * 0.10
+        )
+
+        return {
+            'position_score': round(final_score, 1),
+            'breakdown': {
+                'scoring_ability': {
+                    'score': round(scoring_score, 1),
+                    'goals': total_goals,
+                    'goals_per_game': round(goals_per_game, 2),
+                    'shot_conversion': round(shot_conversion, 1)
+                },
+                'assist_ability': {
+                    'score': round(assist_score, 1),
+                    'assists': total_assists,
+                    'cross_accuracy': round(cross_accuracy, 1),
+                    'key_passes': total_key_passes
+                },
+                'dribbling': {
+                    'score': round(dribbling_score, 1),
+                    'dribble_success_rate': round(dribble_success_rate, 1),
+                    'successful_dribbles_per_game': round(dribble_per_game, 1)
+                },
+                'wing_activity': {
+                    'score': round(wing_activity_score, 1),
+                    'crosses_per_game': round(crosses_per_game, 1)
+                },
+                'consistency': {
+                    'score': round(consistency_score, 1),
+                    'rating_variance': round(rating_variance, 2)
+                }
+            },
+            'key_strengths': cls._identify_winger_strengths(scoring_score, assist_score, dribbling_score),
+            'areas_for_improvement': cls._identify_winger_weaknesses(scoring_score, assist_score, dribbling_score)
+        }
+
+    @classmethod
+    def _identify_winger_strengths(cls, scoring: float, assist: float, dribbling: float) -> List[str]:
+        strengths = []
+        if scoring >= 80:
+            strengths.append("⚡ 강력한 득점 능력")
+        if assist >= 75:
+            strengths.append("🎯 뛰어난 어시스트와 크로스")
+        if dribbling >= 80:
+            strengths.append("💨 탁월한 드리블 돌파")
+        return strengths if strengths else ["위협적인 윙어"]
+
+    @classmethod
+    def _identify_winger_weaknesses(cls, scoring: float, assist: float, dribbling: float) -> List[str]:
+        weaknesses = []
+        if scoring < 55:
+            weaknesses.append("득점력 향상 - 슈팅 정확도와 마무리 개선")
+        if assist < 55:
+            weaknesses.append("어시스트 능력 향상 - 크로스 정확도 훈련")
+        if dribbling < 60:
+            weaknesses.append("드리블 성공률 개선 - 1대1 돌파 훈련")
+        return weaknesses if weaknesses else []
+
+    @classmethod
+    def _empty_evaluation(cls) -> Dict[str, Any]:
+        """빈 평가 결과 반환"""
+        return {
+            'position_score': 0,
+            'breakdown': {},
+            'key_strengths': [],
+            'areas_for_improvement': ['데이터 부족']
+        }
