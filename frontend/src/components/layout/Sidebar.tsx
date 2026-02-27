@@ -93,10 +93,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   // 네비게이션 메뉴 항목들
   const navigationItems: MenuItem[] = [
     {
-      name: '홈',
-      icon: '🏠',
+      name: '유저 검색',
+      icon: '🔍',
       path: '/',
       description: '닉네임 검색',
+      category: 'main',
+    },
+    {
+      name: '상대 분석',
+      icon: '🎯',
+      path: `/opponent-scout`,
+      description: '경기 전 상대 스카우팅',
       category: 'main',
     },
     ...(ouid ? [
@@ -107,12 +114,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         description: '종합 분석',
         category: 'main',
       },
+      // 구분선
+      {
+        divider: true as const,
+        label: '선수 분석',
+        category: 'player',
+      },
       {
         name: '파워 랭킹',
         icon: '⭐',
         path: `/user/${ouid}/power-rankings`,
         description: '선수 평가',
-        category: 'main',
+        category: 'player',
+      },
+      {
+        name: '선수 기여도',
+        icon: '📈',
+        path: `/user/${ouid}/analysis/player-contribution`,
+        description: '포지션별 기여도 분석',
+        category: 'player',
       },
       // 구분선
       {
@@ -176,69 +196,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         category: 'advanced',
       },
       {
-        name: '컨트롤러 분석',
-        icon: '🎮',
-        path: `/user/${ouid}/analysis/controller`,
-        description: '키보드 vs 패드',
-        category: 'advanced',
-      },
-      // 구분선
-      {
-        divider: true as const,
-        label: '전략 인텔리전스',
-        category: 'intelligence',
-      },
-      {
-        name: '랭커 격차',
-        icon: '🏆',
-        path: `/user/${ouid}/analysis/ranker-gap`,
-        description: '랭커까지의 거리',
-        category: 'intelligence',
-      },
-      {
-        name: '실력 격차 인덱스',
-        icon: '📊',
-        path: `/user/${ouid}/analysis/skill-gap`,
-        description: '선수별 Z-score 비교',
-        category: 'intelligence',
-      },
-      {
-        name: '선수 기여도',
-        icon: '📈',
-        path: `/user/${ouid}/analysis/player-contribution`,
-        description: '포지션별 기여도 분석',
-        category: 'intelligence',
-      },
-      {
         name: '폼 사이클',
         icon: '📈',
         path: `/user/${ouid}/analysis/form-cycle`,
         description: '핫스트릭 & 슬럼프',
-        category: 'intelligence',
-      },
-      {
-        name: '습관 루프',
-        icon: '🧠',
-        path: `/user/${ouid}/analysis/habit-loop`,
-        description: '마르코프 패스 분석',
-        category: 'intelligence',
+        category: 'advanced',
       },
       {
         name: '상대 유형 분류',
         icon: '🗺️',
         path: `/user/${ouid}/analysis/opponent-types`,
         description: '6개 유형 승률 맵',
-        category: 'intelligence',
+        category: 'advanced',
       },
     ] : []),
-    // 상대 스카우터 (ouid 불필요)
-    {
-      name: '상대 DNA 스카우터',
-      icon: '🔍',
-      path: `/opponent-scout`,
-      description: '경기 전 상대 분석',
-      category: 'intelligence',
-    },
   ];
 
   return (
