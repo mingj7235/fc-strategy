@@ -83,7 +83,6 @@ Thumbs.db
 backend/backfill_players.py
 backend/check_formation.py
 backend/verify_player_data.py
-backend/static_data/
 
 # Generated docs
 DOCKER_GUIDE.md
