@@ -24,11 +24,11 @@ jobs:
             git pull origin main
 
             # Build and restart containers
-            docker compose -f docker-compose.prod.yml build
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose --env-file .env.prod -f docker-compose.prod.yml build
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
             # Run migrations
-            docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+            docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
 
             # Clean up old images
             docker image prune -f
