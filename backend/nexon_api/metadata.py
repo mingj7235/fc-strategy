@@ -24,15 +24,18 @@ class MetadataLoader:
 
     @classmethod
     def load_metadata(cls, metadata_type: str) -> Optional[Dict]:
-        """Load metadata from local file, cache, or API (in that order)"""
+        """Load metadata from cache, local file, or API (in that order)"""
         if metadata_type not in cls.METADATA_FILES:
             raise ValueError(f"Invalid metadata type: {metadata_type}")
 
         cache_key = f"metadata:{metadata_type}"
-        cached_data = cache.get(cache_key)
 
-        if cached_data:
-            return cached_data
+        try:
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return cached_data
+        except Exception:
+            pass
 
         # Try to load from local file first
         filename = cls.METADATA_FILES[metadata_type]
@@ -43,9 +46,10 @@ class MetadataLoader:
                 with open(local_file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
 
-                # Cache for 24 hours
-                cache.set(cache_key, data, 86400)
-                print(f"Loaded {metadata_type} metadata from local file: {local_file_path}")
+                try:
+                    cache.set(cache_key, data, 86400)
+                except Exception:
+                    pass
 
                 return data
             except (json.JSONDecodeError, IOError) as e:
@@ -59,8 +63,10 @@ class MetadataLoader:
             response.raise_for_status()
             data = response.json()
 
-            # Cache for 24 hours (metadata rarely changes)
-            cache.set(cache_key, data, 86400)
+            try:
+                cache.set(cache_key, data, 86400)
+            except Exception:
+                pass
 
             return data
         except requests.exceptions.RequestException as e:
