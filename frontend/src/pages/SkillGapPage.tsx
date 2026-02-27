@@ -99,7 +99,7 @@ const PlayerGapCard: React.FC<{ gap: PlayerGap; index: number }> = ({ gap, index
   const levelInfo = gap.overall_level_info;
   const levelColor = GAP_COLORS[gap.overall_level] || '#6b7280';
 
-  const radarData = Object.entries(gap.metric_gaps).map(([key, metric]) => ({
+  const radarData = Object.entries(gap.metric_gaps).map(([, metric]) => ({
     metric: metric.label,
     value: Math.max(0, Math.min(100, 50 + metric.z_score * 15)),
     fullMark: 100,
@@ -185,7 +185,7 @@ const PlayerGapCard: React.FC<{ gap: PlayerGap; index: number }> = ({ gap, index
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #374151', borderRadius: '8px' }}
                       labelStyle={{ color: '#fff' }}
-                      formatter={(val: number) => [`${val.toFixed(0)}`, '랭커 근접도']}
+                      formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(0)}`, '랭커 근접도']}
                     />
                   </RadarChart>
                 </ResponsiveContainer>

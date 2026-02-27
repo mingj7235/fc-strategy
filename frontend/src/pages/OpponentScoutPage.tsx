@@ -762,8 +762,8 @@ const OpponentScoutPage: React.FC = () => {
                       />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #374151', borderRadius: '8px' }}
-                        formatter={(val: number, _: string, entry: any) => [
-                          `${(val as number).toFixed(0)} — ${entry.payload?.description || ''}`,
+                        formatter={(val: number | undefined, _: string, entry: any) => [
+                          `${(val as number ?? 0).toFixed(0)} — ${entry.payload?.description || ''}`,
                           entry.payload?.axis || '',
                         ]}
                       />

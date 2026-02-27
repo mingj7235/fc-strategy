@@ -250,7 +250,7 @@ const OpponentTypesPage: React.FC = () => {
                 <YAxis type="category" dataKey="name" stroke="#9ca3af" width={120} tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #374151', borderRadius: '8px' }}
-                  formatter={(val: number) => [`${val}%`, '승률']}
+                  formatter={(val: number | undefined) => [`${val ?? 0}%`, '승률']}
                 />
                 <Bar dataKey="win_rate" name="승률" radius={[0, 4, 4, 0]}>
                   {chartData.map((entry, idx) => (

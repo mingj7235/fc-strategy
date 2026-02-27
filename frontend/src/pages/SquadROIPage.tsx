@@ -329,7 +329,7 @@ const SquadROIPage: React.FC = () => {
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #374151', borderRadius: '8px' }}
                   labelStyle={{ color: '#fff' }}
-                  formatter={(v: number) => [v.toFixed(2), '기여도']}
+                  formatter={(v: number | undefined) => [(v ?? 0).toFixed(2), '기여도']}
                 />
                 <Bar dataKey="score" name="기여도" radius={[4, 4, 0, 0]}>
                   {chartData.map((entry, idx) => (

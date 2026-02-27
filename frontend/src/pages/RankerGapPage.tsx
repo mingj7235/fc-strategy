@@ -135,7 +135,7 @@ const RankerGapPage: React.FC = () => {
   if (error) return <ErrorMessage message={error} />;
   if (!data) return null;
 
-  const radarData = Object.entries(data.metric_breakdown).map(([key, metric]) => ({
+  const radarData = Object.entries(data.metric_breakdown).map(([, metric]) => ({
     metric: metric.label,
     value: metric.proximity_score,
     fullMark: 100,
@@ -210,7 +210,7 @@ const RankerGapPage: React.FC = () => {
                   <Radar name="랭커 기준" dataKey="fullMark" stroke="#f59e0b" fill="none" strokeDasharray="4 4" />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #374151', borderRadius: '8px' }}
-                    formatter={(val: number) => [`${val.toFixed(0)}`, '근접도']}
+                    formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(0)}`, '근접도']}
                   />
                 </RadarChart>
               </ResponsiveContainer>
