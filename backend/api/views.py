@@ -1,5 +1,6 @@
 import time
 
+import gevent
 from gevent.pool import Pool as GeventPool
 
 from rest_framework import viewsets, status
@@ -140,7 +141,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     except Exception:
                         pass  # Individual match failures are non-fatal
 
-                pool = GeventPool(size=5)
+                pool = GeventPool(size=10)
                 pool.map(fetch_and_save, new_ids)
 
             return list(
@@ -180,6 +181,44 @@ class UserViewSet(viewsets.ModelViewSet):
             Match.objects.filter(ouid=user, match_type=matchtype)
             .order_by('-match_date')[:limit]
         )
+
+    def _start_background_fetch(self, user, matchtype, limit):
+        """
+        Start fetching matches in the background if not already in progress.
+        Returns True if a background fetch was started or is in progress.
+        """
+        lock_key = f"ensure_lock:{user.ouid}:{matchtype}"
+        fetching_key = f"fetching:{user.ouid}:{matchtype}"
+
+        # Already have enough data
+        count = Match.objects.filter(ouid=user, match_type=matchtype).count()
+        if count >= limit:
+            return False
+
+        # Check if already fetching
+        if cache.get(fetching_key):
+            return True
+
+        # Try to acquire lock and fetch in background
+        if cache.add(lock_key, "1", timeout=120):
+            cache.set(fetching_key, "1", timeout=120)
+
+            def bg_fetch():
+                try:
+                    self._do_ensure_matches(user, matchtype, limit)
+                finally:
+                    cache.delete(lock_key)
+                    cache.delete(fetching_key)
+
+            gevent.spawn(bg_fetch)
+            return True
+
+        # Another request holds the lock — fetch is in progress
+        return True
+
+    def _is_fetching(self, user, matchtype):
+        """Check if background fetch is in progress for this user."""
+        return bool(cache.get(f"fetching:{user.ouid}:{matchtype}"))
 
     def retrieve(self, request, *args, **kwargs):
         """Return user with full division info for both matchtype 50 and 52"""
@@ -274,14 +313,30 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='matches')
     def matches(self, request, ouid=None):
-        """Get user's matches"""
+        """Get user's matches with progressive loading support.
+
+        Returns immediately with DB data + is_fetching flag.
+        Frontend polls until is_fetching=false.
+        """
         user = get_object_or_404(User, ouid=ouid)
         matchtype = int(request.query_params.get('matchtype', 50))
         limit = int(request.query_params.get('limit', 10))
 
-        matches = self._ensure_matches(user, matchtype, limit)
-        serializer = MatchListSerializer(matches, many=True)
-        return Response(serializer.data)
+        # Start background fetch if needed (non-blocking)
+        is_fetching = self._start_background_fetch(user, matchtype, limit)
+
+        # Return whatever is in DB right now
+        db_matches = list(
+            Match.objects.filter(ouid=user, match_type=matchtype)
+            .order_by('-match_date')[:limit]
+        )
+        serializer = MatchListSerializer(db_matches, many=True)
+        return Response({
+            'matches': serializer.data,
+            'is_fetching': is_fetching,
+            'total': len(db_matches),
+            'requested': limit,
+        })
 
     @action(detail=True, methods=['get'], url_path='overview')
     def overview(self, request, ouid=None):
@@ -294,14 +349,24 @@ class UserViewSet(viewsets.ModelViewSet):
         matchtype = int(request.query_params.get('matchtype', 50))
         limit = int(request.query_params.get('limit', 20))
 
-        # Check cache (15 minute TTL)
+        # Check cache (15 minute TTL) — only use cache when not fetching
         cache_key = f"user_overview:{ouid}:{matchtype}:{limit}"
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return Response(cached_data)
+        is_fetching = self._is_fetching(user, matchtype)
+        if not is_fetching:
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                cached_data['is_fetching'] = False
+                return Response(cached_data)
 
-        # Ensure we have enough matches (fetch from API if needed)
-        matches = self._ensure_matches(user, matchtype, limit)
+        # Start background fetch if needed (non-blocking)
+        if not is_fetching:
+            is_fetching = self._start_background_fetch(user, matchtype, limit)
+
+        # Use whatever matches are in DB right now
+        matches = list(
+            Match.objects.filter(ouid=user, match_type=matchtype)
+            .order_by('-match_date')[:limit]
+        )
 
         if not matches:
             return Response({
@@ -333,7 +398,8 @@ class UserViewSet(viewsets.ModelViewSet):
                     'first_half_win_rate': 0,
                     'second_half_win_rate': 0
                 },
-                'insights': ['경기 데이터가 없습니다.']
+                'insights': ['경기 데이터가 없습니다.'],
+                'is_fetching': is_fetching,
             })
 
         # Calculate statistics
@@ -446,10 +512,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 'recent_win_rate': recent_win_rate,
                 'older_win_rate': older_win_rate,
             },
-            'insights': insights
+            'insights': insights,
+            'is_fetching': is_fetching,
         }
 
-        cache.set(cache_key, overview_data, 900)  # 15 minutes
+        # Only cache when fetch is complete (data is final)
+        if not is_fetching:
+            cache.set(cache_key, overview_data, 900)  # 15 minutes
         return Response(overview_data)
 
     @action(detail=True, methods=['get'], url_path='analysis/shots')

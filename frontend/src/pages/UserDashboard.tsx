@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getUserMatches, getUserOverview } from '../services/api';
 import LoadingProgress from '../components/common/LoadingProgress';
@@ -62,43 +62,71 @@ const UserDashboard = () => {
   const [overview, setOverview] = useState<UserOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refetching, setRefetching] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const isFirstLoad = useRef(true);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!ouid) return;
+  const fetchData = useCallback(async (isPolling = false) => {
+    if (!ouid) return;
 
-      try {
+    try {
+      if (!isPolling) {
         if (isFirstLoad.current) {
           setLoading(true);
         } else {
           setRefetching(true);
         }
+      }
 
-        const currentTab = TABS.find(tab => tab.id === activeTab);
-        const matchtype = currentTab?.matchtype ?? 50;
+      const currentTab = TABS.find(tab => tab.id === activeTab);
+      const matchtype = currentTab?.matchtype ?? 50;
 
-        // matches를 먼저 호출하여 DB에 데이터 저장 후 overview 호출
-        const matchesData = await getUserMatches(ouid, matchtype, limit);
-        setMatches(matchesData);
+      // Fetch matches and overview in parallel
+      const [matchesResp, overviewData] = await Promise.all([
+        getUserMatches(ouid, matchtype, limit),
+        getUserOverview(ouid, matchtype, limit),
+      ]);
 
-        const overviewData = await getUserOverview(ouid, matchtype, limit);
-        setOverview(overviewData);
-        setError('');
-      } catch (err: any) {
-        console.error('Dashboard fetch error:', err);
-        const errorMsg = err.response?.data?.error || '데이터를 불러올 수 없습니다.';
-        setError(errorMsg);
-      } finally {
-        setLoading(false);
-        setRefetching(false);
-        isFirstLoad.current = false;
+      // matches 응답이 {matches, is_fetching} 구조
+      const matchList = matchesResp.matches ?? matchesResp;
+      const serverFetching = matchesResp.is_fetching || overviewData.is_fetching || false;
+
+      setMatches(matchList);
+      setOverview(overviewData);
+      setIsFetching(serverFetching);
+      setError('');
+
+      // 서버가 아직 fetch 중이면 2초 후 다시 폴링
+      if (serverFetching) {
+        pollTimerRef.current = setTimeout(() => fetchData(true), 2000);
+      }
+    } catch (err: any) {
+      console.error('Dashboard fetch error:', err);
+      const errorMsg = err.response?.data?.error || '데이터를 불러올 수 없습니다.';
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+      setRefetching(false);
+      isFirstLoad.current = false;
+    }
+  }, [ouid, activeTab, limit]);
+
+  useEffect(() => {
+    // 탭/limit 변경 시 이전 폴링 취소
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    fetchData();
+
+    return () => {
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
     };
-
-    fetchData();
-  }, [ouid, activeTab, limit]);
+  }, [fetchData]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -326,6 +354,11 @@ const UserDashboard = () => {
                 ? <span className="inline-block w-12 h-4 bg-dark-hover animate-pulse rounded ml-1" />
                 : <span>({matches.length}경기)</span>
               }
+              {isFetching && (
+                <span className="text-sm font-normal text-accent-primary animate-pulse ml-2">
+                  새 경기 불러오는 중...
+                </span>
+              )}
             </h2>
           </div>
 
