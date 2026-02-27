@@ -132,6 +132,7 @@ class UserViewSet(viewsets.ModelViewSet):
             f"opponent_types_{ouid}_{matchtype}_{limit}",
             f"controller_analysis_{ouid}_{matchtype}_{limit}",
             f"match_list:{ouid}:{matchtype}:0:{limit}",
+            f"synced:{ouid}:{matchtype}",
         ]
         cache.delete_many(cache_keys)
 
@@ -213,6 +214,11 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         lock_key = f"ensure_lock:{user.ouid}:{matchtype}"
         fetching_key = f"fetching:{user.ouid}:{matchtype}"
+        synced_key = f"synced:{user.ouid}:{matchtype}"
+
+        # Recently synced — no need to fetch again
+        if cache.get(synced_key):
+            return False
 
         # Check if already fetching
         if cache.get(fetching_key):
@@ -228,6 +234,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 finally:
                     cache.delete(lock_key)
                     cache.delete(fetching_key)
+                    cache.set(synced_key, "1", timeout=1800)  # 30 min
 
             gevent.spawn(bg_fetch)
             return True
