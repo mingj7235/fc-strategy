@@ -22,6 +22,9 @@ from nexon_api.client import NexonAPIClient
 from nexon_api.exceptions import NexonAPIException, UserNotFoundException
 from nexon_api.metadata import MetadataLoader
 from django.core.cache import cache
+import logging
+
+logger = logging.getLogger(__name__)
 from .analyzers.shot_analyzer import ShotAnalyzer
 from .analyzers.style_analyzer import StyleAnalyzer
 from .analyzers.statistics import StatisticsCalculator
@@ -290,11 +293,15 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        client_ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+        logger.info(f"[USER_SEARCH] nickname='{nickname}' ip={client_ip}")
+
         try:
             # Try to find in database first
             user = User.objects.filter(nickname=nickname).first()
 
             if user:
+                logger.info(f"[USER_SEARCH] nickname='{nickname}' found (DB hit, ouid={user.ouid})")
                 serializer = self.get_serializer(user)
                 return Response(serializer.data)
 
@@ -303,6 +310,7 @@ class UserViewSet(viewsets.ModelViewSet):
             ouid = client.get_user_ouid(nickname)
 
             if not ouid:
+                logger.info(f"[USER_SEARCH] nickname='{nickname}' not found")
                 return Response(
                     {'error': 'User not found'},
                     status=status.HTTP_404_NOT_FOUND
@@ -323,15 +331,18 @@ class UserViewSet(viewsets.ModelViewSet):
                 }
             )
 
+            logger.info(f"[USER_SEARCH] nickname='{nickname}' found (API, ouid={ouid}, new={'yes' if created else 'no'})")
             serializer = self.get_serializer(user)
             return Response(serializer.data)
 
         except UserNotFoundException as e:
+            logger.info(f"[USER_SEARCH] nickname='{nickname}' not found (UserNotFoundException)")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_404_NOT_FOUND
             )
         except NexonAPIException as e:
+            logger.error(f"[USER_SEARCH] nickname='{nickname}' API error: {e}")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
