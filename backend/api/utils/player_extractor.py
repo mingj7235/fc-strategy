@@ -145,7 +145,7 @@ class PlayerPerformanceExtractor:
 
         # Passing data — flat or nested
         pass_raw = status.get('pass', {})
-        if isinstance(pass_raw, dict):
+        if isinstance(pass_raw, dict) and pass_raw:
             pass_attempts = pass_raw.get('passTry', 0)
             pass_success = pass_raw.get('passSuccess', 0)
             short_pass_attempts = pass_raw.get('shortPassTry', 0)
@@ -166,7 +166,7 @@ class PlayerPerformanceExtractor:
 
         # Dribbling data — flat or nested
         dribble_raw = status.get('dribble', {})
-        if isinstance(dribble_raw, dict):
+        if isinstance(dribble_raw, dict) and dribble_raw:
             dribble_attempts = dribble_raw.get('dribbleTry', 0)
             dribble_success = dribble_raw.get('dribbleSuccess', 0)
         else:
@@ -175,7 +175,7 @@ class PlayerPerformanceExtractor:
 
         # Defensive data — flat or nested
         defence_raw = status.get('defence', {})
-        if isinstance(defence_raw, dict):
+        if isinstance(defence_raw, dict) and defence_raw:
             tackle_attempts = defence_raw.get('tackleTry', 0)
             tackle_success = defence_raw.get('tackleSuccess', 0)
             block_attempts = defence_raw.get('blockTry', 0)
