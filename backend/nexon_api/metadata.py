@@ -52,8 +52,8 @@ class MetadataLoader:
                     pass
 
                 return data
-            except (json.JSONDecodeError, IOError) as e:
-                print(f"Failed to load {metadata_type} from local file: {e}")
+            except (json.JSONDecodeError, IOError):
+                pass
 
         # Fallback to API if local file not available
         url = f"{cls.METADATA_BASE_URL}{filename}"
@@ -69,8 +69,7 @@ class MetadataLoader:
                 pass
 
             return data
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to load {metadata_type} metadata from API: {e}")
+        except requests.exceptions.RequestException:
             return None
 
     @classmethod

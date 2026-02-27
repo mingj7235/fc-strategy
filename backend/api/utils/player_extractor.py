@@ -24,12 +24,10 @@ class PlayerPerformanceExtractor:
             생성된 PlayerPerformance 객체 수
         """
         if not match.raw_data:
-            print(f"[PlayerExtractor] No raw_data for match {match.match_id}")
             return 0
 
         match_info_list = match.raw_data.get('matchInfo', [])
         if not match_info_list:
-            print(f"[PlayerExtractor] No matchInfo in raw_data for match {match.match_id}")
             return 0
 
         created_count = 0
@@ -49,7 +47,6 @@ class PlayerPerformanceExtractor:
             try:
                 team_user = User.objects.get(ouid=team_ouid_str)
             except User.DoesNotExist:
-                print(f"[PlayerExtractor] User not found for OUID {team_ouid_str}, skipping")
                 continue
 
             # 각 선수 데이터 추출 (실제 경기 참여 선수만)
@@ -73,10 +70,8 @@ class PlayerPerformanceExtractor:
                         created_count += 1
                         participated_index += 1
                 except Exception as e:
-                    print(f"[PlayerExtractor] Error extracting player {player_data.get('spId')}: {e}")
                     continue
 
-        print(f"[PlayerExtractor] Created {created_count} PlayerPerformance records for match {match.match_id}")
         return created_count
 
     @classmethod
@@ -335,7 +330,6 @@ class PlayerPerformanceExtractor:
             total_created += count
             processed += 1
 
-        print(f"[PlayerExtractor] Backfilled {total_created} PlayerPerformance records for {processed} matches")
 
         return {
             'processed': processed,
