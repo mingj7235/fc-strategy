@@ -44,16 +44,16 @@ def forwards(apps, schema_editor):
         for (constraint_name,) in cursor.fetchall():
             cursor.execute(f'ALTER TABLE player_performances DROP CONSTRAINT "{constraint_name}" CASCADE')
 
-        # 2. Drop all indexes on matches.match_id (includes varchar_pattern_ops)
+        # 2. Drop PK constraint first (this also removes the PK index)
+        cursor.execute("ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_pkey CASCADE")
+
+        # 3. Drop remaining indexes on matches.match_id (includes varchar_pattern_ops)
         cursor.execute("""
             SELECT indexname FROM pg_indexes
             WHERE tablename = 'matches' AND indexdef LIKE '%%match_id%%'
         """)
         for (indexname,) in cursor.fetchall():
             cursor.execute(f'DROP INDEX IF EXISTS "{indexname}" CASCADE')
-
-        # 3. Drop PK
-        cursor.execute("ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_pkey CASCADE")
 
         # 4. Drop indexes on child tables that reference match_id with varchar ops
         cursor.execute("""
