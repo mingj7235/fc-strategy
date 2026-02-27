@@ -111,15 +111,36 @@ class UserViewSet(viewsets.ModelViewSet):
             raw_data=match_data
         )
 
+    def _invalidate_user_caches(self, ouid, matchtype, limit):
+        """Invalidate all analysis caches for a user when new matches are found."""
+        cache_keys = [
+            f"user_overview:{ouid}:{matchtype}:{limit}",
+            f"shot_analysis:{ouid}:{matchtype}:{limit}",
+            f"style_analysis:{ouid}:{matchtype}:{limit}",
+            f"statistics:{ouid}:{matchtype}:{limit}",
+            f"power_rankings_{ouid}_{matchtype}_{limit}",
+            f"pass_analysis_v2_{ouid}_{matchtype}_{limit}",
+            f"set_piece_analysis_{ouid}_{matchtype}_{limit}",
+            f"defense_analysis_{ouid}_{matchtype}_{limit}",
+            f"pass_variety_analysis_{ouid}_{matchtype}_{limit}",
+            f"shooting_quality_analysis_{ouid}_{matchtype}_{limit}",
+            f"skill_gap_{ouid}_{matchtype}_{limit}",
+            f"player_contribution_{ouid}_{matchtype}_{limit}",
+            f"form_cycle_{ouid}_{matchtype}_{limit}",
+            f"ranker_gap_{ouid}_{matchtype}_{limit}",
+            f"habit_loop_{ouid}_{matchtype}_{limit}",
+            f"opponent_types_{ouid}_{matchtype}_{limit}",
+            f"controller_analysis_{ouid}_{matchtype}_{limit}",
+            f"match_list:{ouid}:{matchtype}:0:{limit}",
+        ]
+        cache.delete_many(cache_keys)
+
     def _do_ensure_matches(self, user, matchtype, limit):
         """Core logic for fetching and storing matches from Nexon API."""
         existing_matches = Match.objects.filter(
             ouid=user,
             match_type=matchtype
         ).order_by('-match_date')
-
-        if existing_matches.count() >= limit:
-            return list(existing_matches[:limit])
 
         try:
             client = NexonAPIClient()
@@ -143,6 +164,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
                 pool = GeventPool(size=10)
                 pool.map(fetch_and_save, new_ids)
+
+                # Invalidate analysis caches so they recompute with new matches
+                self._invalidate_user_caches(user.ouid, matchtype, limit)
 
             return list(
                 Match.objects.filter(ouid=user, match_type=matchtype)
@@ -189,11 +213,6 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         lock_key = f"ensure_lock:{user.ouid}:{matchtype}"
         fetching_key = f"fetching:{user.ouid}:{matchtype}"
-
-        # Already have enough data
-        count = Match.objects.filter(ouid=user, match_type=matchtype).count()
-        if count >= limit:
-            return False
 
         # Check if already fetching
         if cache.get(fetching_key):

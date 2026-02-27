@@ -120,7 +120,7 @@ class NexonAPIClient:
             "/fconline/v1/user/match",
             params=params,
             cache_key=cache_key,
-            cache_timeout=120,  # 2 minutes
+            cache_timeout=1800,  # 30 minutes
         )
 
         return data

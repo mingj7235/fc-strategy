@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getUserMatches, getUserOverview } from '../services/api';
+import { cachedFetch, setCacheEntry } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import TabNavigation from '../components/common/TabNavigation';
@@ -81,12 +82,18 @@ const UserDashboard = () => {
 
       const currentTab = TABS.find(tab => tab.id === activeTab);
       const matchtype = currentTab?.matchtype ?? 50;
+      const cacheKey = `dashboard:${ouid}:${matchtype}:${limit}`;
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-      // Fetch matches and overview in parallel
-      const [matchesResp, overviewData] = await Promise.all([
+      // Fetch matches and overview in parallel (use cache on non-polling requests)
+      const fetchBoth = () => Promise.all([
         getUserMatches(ouid, matchtype, limit),
         getUserOverview(ouid, matchtype, limit),
       ]);
+
+      const [matchesResp, overviewData] = isPolling
+        ? await fetchBoth()
+        : await cachedFetch(cacheKey, fetchBoth, CACHE_TTL);
 
       // matches 응답이 {matches, is_fetching} 구조
       const matchList = matchesResp.matches ?? matchesResp;
@@ -100,6 +107,9 @@ const UserDashboard = () => {
       // 서버가 아직 fetch 중이면 2초 후 다시 폴링
       if (serverFetching) {
         pollTimerRef.current = setTimeout(() => fetchData(true), 2000);
+      } else if (isPolling) {
+        // 폴링 완료 시 최종 데이터를 캐시에 저장
+        setCacheEntry(cacheKey, [matchesResp, overviewData], CACHE_TTL);
       }
     } catch (err: any) {
       console.error('Dashboard fetch error:', err);

@@ -87,6 +87,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
     if (path === '/') {
       return location.pathname === '/';
     }
+    // 대시보드 경로 (/user/{ouid})는 exact match — 하위 경로 매칭 방지
+    if (path.match(/^\/user\/[^/]+$/)) {
+      return location.pathname === path;
+    }
     return location.pathname.includes(path);
   };
 
@@ -392,10 +396,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                       onToggle();
                     }
                   }}
-                  className={`w-full flex items-start gap-3 px-4 py-2.5 rounded-lg transition-all ${
+                  className={`w-full flex items-start gap-3 px-4 py-2.5 rounded-lg cursor-pointer transition-all duration-200 ${
                     isActive(navItem.path)
                       ? 'bg-accent-primary text-white shadow-lg'
-                      : 'text-gray-300 hover:bg-dark-hover hover:text-white'
+                      : 'text-gray-300 hover:bg-dark-hover hover:text-white hover:scale-[1.02] hover:shadow-md'
                   }`}
                 >
                   <span className="text-lg flex-shrink-0">{navItem.icon}</span>
