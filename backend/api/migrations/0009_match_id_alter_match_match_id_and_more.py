@@ -4,37 +4,104 @@ from django.db import migrations
 
 
 def forwards(apps, schema_editor):
-    """Only run raw SQL if the old schema (match_id as PK) exists."""
+    """
+    Migrate matches table from varchar PK (match_id) to bigint PK (id).
+    This runs on both fresh and existing databases since migrations 0001-0008
+    create the old schema (match_id as varchar PK) regardless.
+    """
     connection = schema_editor.connection
     with connection.cursor() as cursor:
-        # Check if matches table has match_id as primary key (old schema)
+        # Check current match_id data type
         cursor.execute("""
-            SELECT column_name, data_type
-            FROM information_schema.columns
-            WHERE table_name = 'matches' AND column_name = 'id'
+            SELECT data_type FROM information_schema.columns
+            WHERE table_name = 'matches' AND column_name = 'match_id'
         """)
         row = cursor.fetchone()
-
-        # If 'id' column already exists, the new schema is in place — skip
-        if row is not None:
+        if row is None:
             return
 
-        # Old schema detected: match_id was the PK, need to migrate
-        statements = [
-            "ALTER TABLE shot_details DROP CONSTRAINT IF EXISTS shot_details_match_id_4b0af562_fk_matches_match_id CASCADE;",
-            "ALTER TABLE player_performances DROP CONSTRAINT IF EXISTS player_performances_match_id_d4093324_fk_matches_match_id CASCADE;",
-            "ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_pkey CASCADE;",
-            "ALTER TABLE matches ADD COLUMN IF NOT EXISTS id BIGSERIAL PRIMARY KEY;",
-            "ALTER TABLE matches ADD CONSTRAINT matches_match_id_ouid_unique UNIQUE (match_id, ouid_id);",
-            "CREATE INDEX IF NOT EXISTS matches_match_i_feaf87_idx ON matches (match_id);",
-            # Update FKs to point to new bigint id
-            "ALTER TABLE shot_details ALTER COLUMN match_id TYPE bigint USING match_id::bigint;",
-            "ALTER TABLE shot_details ADD CONSTRAINT shot_details_match_id_fk FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE;",
-            "ALTER TABLE player_performances ALTER COLUMN match_id TYPE bigint USING match_id::bigint;",
-            "ALTER TABLE player_performances ADD CONSTRAINT player_performances_match_id_fk FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE;",
-        ]
-        for sql in statements:
-            cursor.execute(sql)
+        match_id_type = row[0]  # e.g. 'character varying' or 'bigint'
+
+        # If match_id is already bigint, Django created the final schema
+        # via a squashed or fresh migration — nothing to do
+        if match_id_type != 'character varying':
+            return
+
+        # -- Old schema: match_id is varchar PK, need to convert --
+
+        # 1. Drop FK constraints from child tables
+        cursor.execute("""
+            SELECT constraint_name FROM information_schema.table_constraints
+            WHERE table_name = 'shot_details' AND constraint_type = 'FOREIGN KEY'
+        """)
+        for (constraint_name,) in cursor.fetchall():
+            cursor.execute(f'ALTER TABLE shot_details DROP CONSTRAINT "{constraint_name}" CASCADE')
+
+        cursor.execute("""
+            SELECT constraint_name FROM information_schema.table_constraints
+            WHERE table_name = 'player_performances' AND constraint_type = 'FOREIGN KEY'
+        """)
+        for (constraint_name,) in cursor.fetchall():
+            cursor.execute(f'ALTER TABLE player_performances DROP CONSTRAINT "{constraint_name}" CASCADE')
+
+        # 2. Drop all indexes on matches.match_id (includes varchar_pattern_ops)
+        cursor.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = 'matches' AND indexdef LIKE '%%match_id%%'
+        """)
+        for (indexname,) in cursor.fetchall():
+            cursor.execute(f'DROP INDEX IF EXISTS "{indexname}" CASCADE')
+
+        # 3. Drop PK
+        cursor.execute("ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_pkey CASCADE")
+
+        # 4. Drop indexes on child tables that reference match_id with varchar ops
+        cursor.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = 'shot_details' AND indexdef LIKE '%%match_id%%'
+        """)
+        for (indexname,) in cursor.fetchall():
+            cursor.execute(f'DROP INDEX IF EXISTS "{indexname}" CASCADE')
+
+        cursor.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = 'player_performances' AND indexdef LIKE '%%match_id%%'
+        """)
+        for (indexname,) in cursor.fetchall():
+            cursor.execute(f'DROP INDEX IF EXISTS "{indexname}" CASCADE')
+
+        # 5. Convert match_id columns to bigint
+        # For fresh DB these tables are empty, so cast is safe
+        cursor.execute("ALTER TABLE shot_details ALTER COLUMN match_id TYPE bigint USING match_id::bigint")
+        cursor.execute("""
+            DO $$ BEGIN
+                ALTER TABLE player_performances ALTER COLUMN match_id TYPE bigint USING match_id::bigint;
+            EXCEPTION WHEN undefined_column THEN NULL;
+            END $$
+        """)
+        cursor.execute("ALTER TABLE matches ALTER COLUMN match_id TYPE varchar(255)")
+
+        # 6. Add new id column as PK
+        cursor.execute("ALTER TABLE matches ADD COLUMN id BIGSERIAL PRIMARY KEY")
+
+        # 7. Add unique constraint and index
+        cursor.execute("ALTER TABLE matches ADD CONSTRAINT matches_match_id_ouid_unique UNIQUE (match_id, ouid_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS matches_match_i_feaf87_idx ON matches (match_id)")
+
+        # 8. Re-add FK constraints pointing to new id column
+        cursor.execute("""
+            ALTER TABLE shot_details
+            ADD CONSTRAINT shot_details_match_id_fk
+            FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+        """)
+        cursor.execute("""
+            DO $$ BEGIN
+                ALTER TABLE player_performances
+                ADD CONSTRAINT player_performances_match_id_fk
+                FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE;
+            EXCEPTION WHEN undefined_column THEN NULL;
+            END $$
+        """)
 
 
 class Migration(migrations.Migration):
