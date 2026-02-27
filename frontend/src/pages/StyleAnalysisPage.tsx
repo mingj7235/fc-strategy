@@ -102,7 +102,7 @@ const StyleAnalysisPage: React.FC = () => {
           30 * 60 * 1000
         );
         setAnalysis(analysisData);
-        setMatches(matchData);
+        setMatches(matchData.matches ?? matchData);
         setError('');
       } catch (err: any) {
         console.error('Style analysis fetch error:', err);
