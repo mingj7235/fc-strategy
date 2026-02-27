@@ -38,7 +38,6 @@ class NexonAPIClient:
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_body = e.response.text
-                    print(f"Nexon API Error Response: {error_body}")
 
                     # Parse error response JSON
                     try:
@@ -116,22 +115,26 @@ class NexonAPIClient:
             "limit": limit
         }
 
+        cache_key = f"match_list:{ouid}:{matchtype}:{offset}:{limit}"
         data = self._make_request(
-            "/fconline/v1/user/match",  # 수정: matches -> match
+            "/fconline/v1/user/match",
             params=params,
-            cache_key=None,  # Don't cache match lists as they update frequently
+            cache_key=cache_key,
+            cache_timeout=120,  # 2 minutes
         )
 
         return data
 
     def get_match_detail(self, match_id):
         """Get match detail information"""
-        params = {"matchid": match_id}  # 파라미터로 전달
+        params = {"matchid": match_id}
 
+        cache_key = f"match_detail:{match_id}"
         data = self._make_request(
-            "/fconline/v1/match-detail",  # 경로에 match_id 포함 안 함
+            "/fconline/v1/match-detail",
             params=params,
-            cache_key=None,  # No caching: multiple callers may need fresh data
+            cache_key=cache_key,
+            cache_timeout=86400,  # 24 hours (match data is immutable)
         )
 
         return data

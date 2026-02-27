@@ -1,3 +1,7 @@
+import time
+
+from gevent.pool import Pool as GeventPool
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -36,129 +40,146 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     lookup_field = 'ouid'
 
-    def _ensure_matches(self, user, matchtype, limit):
-        """
-        Ensure we have at least 'limit' matches in the database.
-        Fetches from Nexon API if needed.
-        Returns list of Match objects.
-        """
-        # First, check how many matches we have in DB
+    def _create_match_from_data(self, match_id, user, match_data):
+        """Create a Match record from Nexon API match detail data."""
+        user_match_info = None
+        for info in match_data.get('matchInfo', []):
+            if info.get('ouid') == user.ouid:
+                user_match_info = info
+                break
+
+        if not user_match_info:
+            return None
+
+        # Determine result
+        result_type = user_match_info.get('matchDetail', {}).get('matchResult')
+        if result_type == '승':
+            result = 'win'
+        elif result_type == '패':
+            result = 'lose'
+        else:
+            result = 'draw'
+
+        # Get opponent's info
+        opponent_match_info = None
+        for info in match_data.get('matchInfo', []):
+            if info.get('ouid') != user.ouid:
+                opponent_match_info = info
+                break
+
+        opponent_nickname = opponent_match_info.get('nickname') if opponent_match_info else None
+
+        # Calculate pass success rate
+        pass_data = user_match_info.get('pass') or {}
+        pass_try = pass_data.get('passTry') or 0
+        pass_success = pass_data.get('passSuccess') or 0
+        pass_success_rate = (pass_success / pass_try * 100) if pass_try > 0 else 0
+
+        # Extract shooting data
+        shoot_data = user_match_info.get('shoot') or {}
+        opponent_shoot_data = opponent_match_info.get('shoot') or {} if opponent_match_info else {}
+        match_detail = user_match_info.get('matchDetail') or {}
+
+        # Calculate shots from player stats (more reliable than shootDetail)
+        players = user_match_info.get('player') or []
+        shots_count = sum(p.get('status', {}).get('shoot', 0) for p in players)
+        shots_on_target_count = sum(p.get('status', {}).get('effectiveShoot', 0) for p in players)
+
+        # Parse and make timezone-aware
+        match_date_str = match_data.get('matchDate')
+        if match_date_str:
+            match_date = datetime.fromisoformat(match_date_str.replace('Z', '+00:00'))
+            if timezone.is_naive(match_date):
+                match_date = timezone.make_aware(match_date, dt.timezone.utc)
+        else:
+            match_date = None
+
+        return Match.objects.create(
+            match_id=match_id,
+            ouid=user,
+            match_date=match_date,
+            match_type=match_data.get('matchType'),
+            result=result,
+            goals_for=shoot_data.get('goalTotalDisplay') or 0,
+            goals_against=opponent_shoot_data.get('goalTotalDisplay') or 0,
+            possession=match_detail.get('possession') or 0,
+            shots=shots_count,
+            shots_on_target=shots_on_target_count,
+            pass_success_rate=round(pass_success_rate, 2),
+            opponent_nickname=opponent_nickname,
+            raw_data=match_data
+        )
+
+    def _do_ensure_matches(self, user, matchtype, limit):
+        """Core logic for fetching and storing matches from Nexon API."""
         existing_matches = Match.objects.filter(
             ouid=user,
             match_type=matchtype
         ).order_by('-match_date')
 
-        existing_count = existing_matches.count()
-        print(f"🔍 _ensure_matches: user={user.nickname}, matchtype={matchtype}, limit={limit}, existing={existing_count}")
+        if existing_matches.count() >= limit:
+            return list(existing_matches[:limit])
 
-        # If we have enough, return them
-        if existing_count >= limit:
-            result = list(existing_matches[:limit])
-            print(f"✅ Returning {len(result)} existing matches")
-            return result
-
-        # Otherwise, fetch from API
         try:
-            print(f"📡 Fetching from Nexon API: limit={limit}")
             client = NexonAPIClient()
             match_ids = client.get_user_matches(user.ouid, matchtype=matchtype, limit=limit)
-            print(f"📥 Received {len(match_ids)} match_ids from API")
 
-            # Process each match_id
-            matches = []
-            for match_id in match_ids:
-                # Check if match exists for THIS user (same match_id can exist for different users)
-                match = Match.objects.filter(match_id=match_id, ouid=user).first()
+            # Bulk check which match_ids already exist in DB (eliminates N+1)
+            existing_ids = set(
+                Match.objects.filter(match_id__in=match_ids, ouid=user)
+                .values_list('match_id', flat=True)
+            )
+            new_ids = [mid for mid in match_ids if mid not in existing_ids]
 
-                if not match:
-                    # Fetch match details from API
-                    match_data = client.get_match_detail(match_id)
+            # Fetch new matches in parallel (gevent-compatible)
+            if new_ids:
+                def fetch_and_save(match_id):
+                    try:
+                        match_data = client.get_match_detail(match_id)
+                        self._create_match_from_data(match_id, user, match_data)
+                    except Exception:
+                        pass  # Individual match failures are non-fatal
 
-                    # Find user's match info
-                    user_match_info = None
-                    for info in match_data.get('matchInfo', []):
-                        if info.get('ouid') == user.ouid:
-                            user_match_info = info
-                            break
+                pool = GeventPool(size=5)
+                pool.map(fetch_and_save, new_ids)
 
-                    if user_match_info:
-                        # Determine result
-                        result_type = user_match_info.get('matchDetail', {}).get('matchResult')
-                        if result_type == '승':
-                            result = 'win'
-                        elif result_type == '패':
-                            result = 'lose'
-                        else:
-                            result = 'draw'
+            return list(
+                Match.objects.filter(ouid=user, match_type=matchtype)
+                .order_by('-match_date')[:limit]
+            )
 
-                        # Get opponent's info
-                        opponent_match_info = None
-                        for info in match_data.get('matchInfo', []):
-                            if info.get('ouid') != user.ouid:
-                                opponent_match_info = info
-                                break
-
-                        # Extract opponent nickname
-                        opponent_nickname = opponent_match_info.get('nickname') if opponent_match_info else None
-
-                        # Calculate pass success rate (handle None values)
-                        pass_data = user_match_info.get('pass') or {}
-                        pass_try = pass_data.get('passTry') or 0
-                        pass_success = pass_data.get('passSuccess') or 0
-                        pass_success_rate = (pass_success / pass_try * 100) if pass_try > 0 else 0
-
-                        # Create match record (handle None values)
-                        shoot_data = user_match_info.get('shoot') or {}
-                        opponent_shoot_data = opponent_match_info.get('shoot') or {} if opponent_match_info else {}
-                        match_detail = user_match_info.get('matchDetail') or {}
-
-                        # Calculate shots from player stats (more reliable than shootDetail)
-                        # player.status.shoot and effectiveShoot are accurate counts
-                        players = user_match_info.get('player') or []
-                        shots_count = sum(p.get('status', {}).get('shoot', 0) for p in players)
-                        shots_on_target_count = sum(p.get('status', {}).get('effectiveShoot', 0) for p in players)
-
-                        # Parse and make timezone-aware
-                        match_date_str = match_data.get('matchDate')
-                        if match_date_str:
-                            # Parse ISO format and make timezone-aware (UTC)
-                            match_date = datetime.fromisoformat(match_date_str.replace('Z', '+00:00'))
-                            if timezone.is_naive(match_date):
-                                match_date = timezone.make_aware(match_date, dt.timezone.utc)
-                        else:
-                            match_date = None
-
-                        match = Match.objects.create(
-                            match_id=match_id,
-                            ouid=user,
-                            match_date=match_date,
-                            match_type=match_data.get('matchType'),
-                            result=result,
-                            goals_for=shoot_data.get('goalTotalDisplay') or 0,
-                            goals_against=opponent_shoot_data.get('goalTotalDisplay') or 0,
-                            possession=match_detail.get('possession') or 0,
-                            shots=shots_count,
-                            shots_on_target=shots_on_target_count,
-                            pass_success_rate=round(pass_success_rate, 2),
-                            opponent_nickname=opponent_nickname,
-                            raw_data=match_data
-                        )
-
-                if match:
-                    matches.append(match)
-
-            # After fetching new matches, query DB again to get exactly 'limit' matches
-            # This ensures we return the correct number even if some were already in DB
-            result = list(Match.objects.filter(
-                ouid=user,
-                match_type=matchtype
-            ).order_by('-match_date')[:limit])
-            print(f"✅ After API fetch, returning {len(result)} matches from DB")
-            return result
-
-        except NexonAPIException as e:
-            # If API fails, return what we have in DB
+        except NexonAPIException:
             return list(existing_matches[:limit])
+
+    def _ensure_matches(self, user, matchtype, limit):
+        """
+        Ensure we have at least 'limit' matches in the database.
+        Uses Redis lock to prevent duplicate API calls for the same user.
+        """
+        lock_key = f"ensure_lock:{user.ouid}:{matchtype}"
+
+        # Try to acquire lock; if another request is already fetching, wait
+        for _ in range(60):  # Max 60s wait
+            if cache.add(lock_key, "1", timeout=120):
+                try:
+                    return self._do_ensure_matches(user, matchtype, limit)
+                finally:
+                    cache.delete(lock_key)
+
+            # While waiting, check if DB already has enough data
+            count = Match.objects.filter(ouid=user, match_type=matchtype).count()
+            if count >= limit:
+                return list(
+                    Match.objects.filter(ouid=user, match_type=matchtype)
+                    .order_by('-match_date')[:limit]
+                )
+            time.sleep(1)
+
+        # Timeout — return whatever is in DB
+        return list(
+            Match.objects.filter(ouid=user, match_type=matchtype)
+            .order_by('-match_date')[:limit]
+        )
 
     def retrieve(self, request, *args, **kwargs):
         """Return user with full division info for both matchtype 50 and 52"""
@@ -258,104 +279,9 @@ class UserViewSet(viewsets.ModelViewSet):
         matchtype = int(request.query_params.get('matchtype', 50))
         limit = int(request.query_params.get('limit', 10))
 
-        try:
-            client = NexonAPIClient()
-            match_ids = client.get_user_matches(user.ouid, matchtype=matchtype, limit=limit)
-
-            # Fetch or create matches
-            matches = []
-            for match_id in match_ids:
-                # Check if match exists for THIS user (same match_id can exist for different users)
-                match = Match.objects.filter(match_id=match_id, ouid=user).first()
-
-                if not match:
-                    # Fetch match details from API
-                    match_data = client.get_match_detail(match_id)
-
-                    # Find user's match info
-                    user_match_info = None
-                    for info in match_data.get('matchInfo', []):
-                        if info.get('ouid') == user.ouid:
-                            user_match_info = info
-                            break
-
-                    if user_match_info:
-                        # Determine result
-                        result_type = user_match_info.get('matchDetail', {}).get('matchResult')
-                        if result_type == '승':
-                            result = 'win'
-                        elif result_type == '패':
-                            result = 'lose'
-                        else:
-                            result = 'draw'
-
-                        # Get opponent's info
-                        opponent_match_info = None
-                        for info in match_data.get('matchInfo', []):
-                            if info.get('ouid') != user.ouid:
-                                opponent_match_info = info
-                                break
-
-                        # Extract opponent nickname
-                        opponent_nickname = opponent_match_info.get('nickname') if opponent_match_info else None
-
-                        # Calculate pass success rate (handle None values)
-                        pass_data = user_match_info.get('pass') or {}
-                        pass_try = pass_data.get('passTry') or 0
-                        pass_success = pass_data.get('passSuccess') or 0
-                        pass_success_rate = (pass_success / pass_try * 100) if pass_try > 0 else 0
-
-                        # Create match record (handle None values)
-                        shoot_data = user_match_info.get('shoot') or {}
-                        opponent_shoot_data = opponent_match_info.get('shoot') or {} if opponent_match_info else {}
-                        match_detail = user_match_info.get('matchDetail') or {}
-
-                        # Calculate shots from player stats (more reliable than shootDetail)
-                        # player.status.shoot and effectiveShoot are accurate counts
-                        players = user_match_info.get('player') or []
-                        shots_count = sum(p.get('status', {}).get('shoot', 0) for p in players)
-                        shots_on_target_count = sum(p.get('status', {}).get('effectiveShoot', 0) for p in players)
-
-                        # Parse and make timezone-aware
-                        match_date_str = match_data.get('matchDate')
-                        if match_date_str:
-                            # Parse ISO format and make timezone-aware (UTC)
-                            match_date = datetime.fromisoformat(match_date_str.replace('Z', '+00:00'))
-                            if timezone.is_naive(match_date):
-                                match_date = timezone.make_aware(match_date, dt.timezone.utc)
-                        else:
-                            match_date = None
-
-                        match = Match.objects.create(
-                            match_id=match_id,
-                            ouid=user,
-                            match_date=match_date,
-                            match_type=match_data.get('matchType'),
-                            result=result,
-                            goals_for=shoot_data.get('goalTotalDisplay') or 0,
-                            goals_against=opponent_shoot_data.get('goalTotalDisplay') or 0,
-                            possession=match_detail.get('possession') or 0,
-                            shots=shots_count,
-                            shots_on_target=shots_on_target_count,
-                            pass_success_rate=round(pass_success_rate, 2),
-                            opponent_nickname=opponent_nickname,
-                            raw_data=match_data
-                        )
-
-                if match:
-                    matches.append(match)
-
-            serializer = MatchListSerializer(matches, many=True)
-            return Response(serializer.data)
-
-        except NexonAPIException:
-            # API failed — fall back to returning whatever we have in DB
-            db_matches = list(
-                Match.objects.filter(ouid=user, match_type=matchtype)
-                .order_by('-match_date')[:limit]
-            )
-            serializer = MatchListSerializer(db_matches, many=True)
-            return Response(serializer.data)
+        matches = self._ensure_matches(user, matchtype, limit)
+        serializer = MatchListSerializer(matches, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'], url_path='overview')
     def overview(self, request, ouid=None):
@@ -541,13 +467,10 @@ class UserViewSet(viewsets.ModelViewSet):
         cache_key = f"shot_analysis:{ouid}:{matchtype}:{limit}"
         cached_data = cache.get(cache_key)
         if cached_data:
-            print(f"💾 Cache HIT for {cache_key}")
             return Response(cached_data)
 
-        print(f"🔄 Cache MISS for {cache_key}")
         # Ensure we have enough matches (fetch from API if needed)
         matches = self._ensure_matches(user, matchtype, limit)
-        print(f"📊 shot_analysis processing {len(matches)} matches")
 
         if not matches:
             return Response(
@@ -880,7 +803,7 @@ class UserViewSet(viewsets.ModelViewSet):
             user_ouid=user
         ).exclude(position=28).select_related('match')
 
-        print(f"🔍 Processing {len(matches)} matches, {all_performances.count()} performances for power rankings")
+
 
         for perf in all_performances:
             match = perf.match
@@ -1384,8 +1307,7 @@ class UserViewSet(viewsets.ModelViewSet):
                         elif isinstance(status, dict) and status:
                             # Pre-aggregated format: API returns single dict of averages
                             ranker_status_list.append(status)
-            except Exception as e:
-                print(f"[SkillGap] ranker-stats API error for spid={spid}: {e}")
+            except Exception:
                 ranker_status_list = []
 
             gap = SkillGapAnalyzer.analyze_player_gap(
@@ -1453,9 +1375,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 if len(batch) < page_size:
                     break  # 마지막 페이지
                 offset += page_size
-            print(f"[ROI] Trade history fetched: {len(trade_history)} records")
-        except Exception as e:
-            print(f"[ROI] Trade history fetch error: {e}")
+        except Exception:
             trade_history = []
 
         # Group performances by spid
@@ -1598,8 +1518,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 raw = client.get_ranker_stats(matchtype=matchtype, players=players_query)
                 if isinstance(raw, list):
                     ranker_api_data = raw
-            except Exception as e:
-                print(f"[RankerGap] API error: {e}")
+            except Exception:
+                pass
 
         # Get user's division
         division = user.max_division or 300
@@ -2558,8 +2478,7 @@ Sent via FC Strategy Buy Me a Coffee feature
             'success': True,
             'message': 'Support message sent successfully'
         })
-    except Exception as e:
-        print(f"Error sending support message: {e}")
+    except Exception:
         return Response(
             {'error': 'Failed to send message. Please try again later.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
