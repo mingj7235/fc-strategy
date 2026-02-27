@@ -8,10 +8,14 @@ DOMAIN="fc-strategy.org"
 EMAIL="joshuara7235@gmail.com"
 COMPOSE="docker compose --env-file .env.prod -f docker-compose.prod.yml"
 
-echo "=== Step 1: 임시 자체서명 인증서 생성 ==="
+echo "=== Step 1: 기존 볼륨 정리 ==="
 $COMPOSE down
+docker volume rm -f fc-strategy_certbot_conf fc-strategy_certbot_www 2>/dev/null || true
 
-# certbot_conf 볼륨에 임시 인증서 생성
+echo "=== Step 2: 임시 자체서명 인증서 생성 ==="
+docker volume create fc-strategy_certbot_conf
+docker volume create fc-strategy_certbot_www
+
 docker run --rm \
   -v fc-strategy_certbot_conf:/etc/letsencrypt \
   alpine sh -c "
@@ -23,11 +27,17 @@ docker run --rm \
       -subj '/CN=$DOMAIN'
   "
 
-echo "=== Step 2: Nginx 시작 (임시 인증서) ==="
+echo "=== Step 3: Nginx 시작 (임시 인증서) ==="
 $COMPOSE up -d frontend
+echo "Nginx 안정화 대기 (5초)..."
+sleep 5
 
-echo "=== Step 3: Let's Encrypt 인증서 발급 ==="
-# 임시 인증서 삭제 후 진짜 인증서 발급
+echo "=== Step 4: 임시 인증서 삭제 ==="
+docker run --rm \
+  -v fc-strategy_certbot_conf:/etc/letsencrypt \
+  alpine sh -c "rm -rf /etc/letsencrypt/live/$DOMAIN /etc/letsencrypt/renewal/$DOMAIN.conf /etc/letsencrypt/archive/$DOMAIN"
+
+echo "=== Step 5: Let's Encrypt 인증서 발급 ==="
 docker run --rm \
   -v fc-strategy_certbot_www:/var/www/certbot \
   -v fc-strategy_certbot_conf:/etc/letsencrypt \
@@ -36,10 +46,9 @@ docker run --rm \
     -d $DOMAIN -d www.$DOMAIN \
     --email $EMAIL \
     --agree-tos \
-    --no-eff-email \
-    --force-renewal
+    --no-eff-email
 
-echo "=== Step 4: 전체 서비스 재시작 (진짜 인증서) ==="
+echo "=== Step 6: 전체 서비스 재시작 (진짜 인증서) ==="
 $COMPOSE down
 $COMPOSE up -d
 
