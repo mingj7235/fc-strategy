@@ -24,7 +24,7 @@ jobs:
             git pull origin main
 
             # Build and restart containers
-            docker compose --env-file .env.prod -f docker-compose.prod.yml build
+            docker compose --env-file .env.prod -f docker-compose.prod.yml build backend frontend
             docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
             # Run migrations
