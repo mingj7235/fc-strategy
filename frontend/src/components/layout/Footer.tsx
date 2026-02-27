@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Buy Me a Coffee configuration
-const BUYMEACOFFEE_USERNAME = 'zinedine05'; // TODO: Replace with actual Buy Me a Coffee username
+const BUYMEACOFFEE_USERNAME = 'joshuara7235';
 
 const Footer: React.FC = () => {
   return (
