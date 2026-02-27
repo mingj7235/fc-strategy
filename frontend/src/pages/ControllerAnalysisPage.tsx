@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getControllerAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import ControllerComparison from '../components/analysis/ControllerComparison';
@@ -24,7 +25,11 @@ const ControllerAnalysisPage: React.FC = () => {
 
       try {
         setLoading(true);
-        const data = await getControllerAnalysis(ouid, matchtype, limit);
+        const data = await cachedFetch(
+          `controllerAnalysis:${ouid}:${matchtype}:${limit}`,
+          () => getControllerAnalysis(ouid, matchtype, limit),
+          30 * 60 * 1000
+        );
         setAnalysis(data);
         setError('');
       } catch (err: any) {

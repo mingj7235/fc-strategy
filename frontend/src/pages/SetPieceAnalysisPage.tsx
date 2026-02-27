@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSetPieceAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { SetPieceAnalysisData } from '../types/advancedAnalysis';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -33,7 +34,11 @@ const SetPieceAnalysisPage: React.FC = () => {
     setError('');
 
     try {
-      const result = await getSetPieceAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `setPieceAnalysis:${ouid}:${matchtype}:${limit}`,
+        () => getSetPieceAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       console.error('Set piece analysis fetch error:', err);

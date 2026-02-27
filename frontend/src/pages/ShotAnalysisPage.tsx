@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import PlayerAvatar from '../components/common/PlayerAvatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getShotAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -130,7 +131,11 @@ const ShotAnalysisPage: React.FC = () => {
 
       try {
         setLoading(true);
-        const data = await getShotAnalysis(ouid, matchtype, limit);
+        const data = await cachedFetch(
+          `shotAnalysis:${ouid}:${matchtype}:${limit}`,
+          () => getShotAnalysis(ouid, matchtype, limit),
+          30 * 60 * 1000
+        );
         setAnalysis(data);
         setError('');
       } catch (err: any) {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import PlayerAvatar from '../components/common/PlayerAvatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPassAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { PassAnalysisData } from '../types/passAnalysis';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -43,7 +44,11 @@ const PassAnalysisPage: React.FC = () => {
     setError('');
 
     try {
-      const data = await getPassAnalysis(ouid, matchtype, limit);
+      const data = await cachedFetch(
+        `passAnalysis:${ouid}:${matchtype}:${limit}`,
+        () => getPassAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setAnalysis(data);
     } catch (err: any) {
       console.error('Pass analysis fetch error:', err);

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getOpponentTypesAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -137,7 +138,11 @@ const OpponentTypesPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const result = await getOpponentTypesAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `opponentTypes:${ouid}:${matchtype}:${limit}`,
+        () => getOpponentTypesAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       setError(err.response?.data?.error || '상대 유형 분석을 불러오는 중 오류가 발생했습니다.');

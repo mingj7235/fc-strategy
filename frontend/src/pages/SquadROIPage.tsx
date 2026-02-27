@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayerContributionAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -196,7 +197,11 @@ const SquadROIPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const result = await getPlayerContributionAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `playerContribution:${ouid}:${matchtype}:${limit}`,
+        () => getPlayerContributionAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       setError(err.response?.data?.error || '선수 기여도 분석을 불러오는 중 오류가 발생했습니다.');

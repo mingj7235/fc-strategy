@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getDefenseAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { DefenseAnalysisData } from '../types/advancedAnalysis';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -33,7 +34,11 @@ const DefenseAnalysisPage: React.FC = () => {
     setError('');
 
     try {
-      const result = await getDefenseAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `defenseAnalysis:${ouid}:${matchtype}:${limit}`,
+        () => getDefenseAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       console.error('Defense analysis fetch error:', err);

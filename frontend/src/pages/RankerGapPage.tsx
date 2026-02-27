@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRankerGapAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -113,7 +114,11 @@ const RankerGapPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const result = await getRankerGapAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `rankerGap:${ouid}:${matchtype}:${limit}`,
+        () => getRankerGapAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       setError(err.response?.data?.error || '랭커 격차 분석을 불러오는 중 오류가 발생했습니다.');

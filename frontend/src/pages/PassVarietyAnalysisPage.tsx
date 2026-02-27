@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPassVarietyAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { PassVarietyAnalysisData } from '../types/advancedAnalysis';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import LoadingProgress from '../components/common/LoadingProgress';
@@ -36,7 +37,11 @@ const PassVarietyAnalysisPage: React.FC = () => {
     setError('');
 
     try {
-      const result = await getPassVarietyAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `passVarietyAnalysis:${ouid}:${matchtype}:${limit}`,
+        () => getPassVarietyAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       console.error('Pass variety analysis fetch error:', err);

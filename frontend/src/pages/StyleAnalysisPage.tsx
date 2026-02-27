@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getStyleAnalysis, getUserMatches } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -92,10 +93,14 @@ const StyleAnalysisPage: React.FC = () => {
 
       try {
         setLoading(true);
-        const [analysisData, matchData] = await Promise.all([
-          getStyleAnalysis(ouid, matchtype, limit),
-          getUserMatches(ouid, matchtype, limit),
-        ]);
+        const [analysisData, matchData] = await cachedFetch(
+          `styleAnalysis:${ouid}:${matchtype}:${limit}`,
+          () => Promise.all([
+            getStyleAnalysis(ouid, matchtype, limit),
+            getUserMatches(ouid, matchtype, limit),
+          ]),
+          30 * 60 * 1000
+        );
         setAnalysis(analysisData);
         setMatches(matchData);
         setError('');

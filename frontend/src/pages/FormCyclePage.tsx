@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getFormCycleAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import MatchTypeSelector from '../components/common/MatchTypeSelector';
@@ -117,7 +118,11 @@ const FormCyclePage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const result = await getFormCycleAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `formCycle:${ouid}:${matchtype}:${limit}`,
+        () => getFormCycleAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       setError(err.response?.data?.error || '폼 사이클 분석을 불러오는 중 오류가 발생했습니다.');

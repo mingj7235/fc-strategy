@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getShootingQualityAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { ShootingQualityAnalysisData } from '../types/advancedAnalysis';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import LoadingProgress from '../components/common/LoadingProgress';
@@ -34,7 +35,11 @@ const ShootingQualityAnalysisPage: React.FC = () => {
     setError('');
 
     try {
-      const result = await getShootingQualityAnalysis(ouid, matchtype, limit);
+      const result = await cachedFetch(
+        `shootingQualityAnalysis:${ouid}:${matchtype}:${limit}`,
+        () => getShootingQualityAnalysis(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setData(result);
     } catch (err: any) {
       console.error('Shooting quality analysis fetch error:', err);

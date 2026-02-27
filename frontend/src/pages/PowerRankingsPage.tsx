@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPowerRankings } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import type { PowerRankingsResponse } from '../types/powerRanking';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -48,7 +49,11 @@ const PowerRankingsPage: React.FC = () => {
     setError('');
 
     try {
-      const data = await getPowerRankings(ouid, matchtype, limit);
+      const data = await cachedFetch(
+        `powerRankings:${ouid}:${matchtype}:${limit}`,
+        () => getPowerRankings(ouid, matchtype, limit),
+        30 * 60 * 1000
+      );
       setRankings(data);
     } catch (err: any) {
       console.error('Power rankings fetch error:', err);
