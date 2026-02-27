@@ -44,6 +44,7 @@ env/
 # Environment variables
 .env
 .env.local
+.env.prod
 
 # IDE
 .vscode/
