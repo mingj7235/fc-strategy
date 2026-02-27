@@ -79,12 +79,11 @@ const UserDashboard = () => {
         const currentTab = TABS.find(tab => tab.id === activeTab);
         const matchtype = currentTab?.matchtype ?? 50;
 
-        const [matchesData, overviewData] = await Promise.all([
-          getUserMatches(ouid, matchtype, limit),
-          getUserOverview(ouid, matchtype, limit)
-        ]);
-
+        // matches를 먼저 호출하여 DB에 데이터 저장 후 overview 호출
+        const matchesData = await getUserMatches(ouid, matchtype, limit);
         setMatches(matchesData);
+
+        const overviewData = await getUserOverview(ouid, matchtype, limit);
         setOverview(overviewData);
         setError('');
       } catch (err: any) {
