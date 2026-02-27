@@ -293,8 +293,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        client_ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
-        logger.info(f"[USER_SEARCH] nickname='{nickname}' ip={client_ip}")
+        logger.info(f"[USER_SEARCH] nickname='{nickname}'")
 
         try:
             # Try to find in database first
