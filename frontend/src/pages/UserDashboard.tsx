@@ -393,16 +393,6 @@ const UserDashboard = () => {
             <p className="text-gray-400 text-sm">히트맵, 효율성, 위치별 분석</p>
           </button>
           <button
-            onClick={() => navigate(`/user/${ouid}/analysis/passes`)}
-            className="bg-gradient-to-br from-green-500/10 to-teal-500/10 border border-green-500/30 rounded-lg shadow-dark p-6 hover:shadow-dark-lg hover:border-green-500/50 transition-all text-left transform hover:scale-[1.02]"
-          >
-            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-              <span className="text-2xl">⚽</span>
-              패스 분석
-            </h3>
-            <p className="text-gray-400 text-sm">xA, 킬패스, 전진 패스</p>
-          </button>
-          <button
             onClick={() => navigate(`/user/${ouid}/analysis/style`)}
             className="bg-gradient-to-br from-dark-card to-dark-hover border border-dark-border rounded-lg shadow-dark p-6 hover:shadow-dark-lg hover:border-accent-primary/50 transition-all text-left transform hover:scale-[1.02]"
           >

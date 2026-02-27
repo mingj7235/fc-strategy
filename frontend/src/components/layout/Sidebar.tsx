@@ -159,13 +159,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         category: 'analysis',
       },
       {
-        name: '패스 분석',
-        icon: '↗️',
-        path: `/user/${ouid}/analysis/passes`,
-        description: '패스 정확도',
-        category: 'analysis',
-      },
-      {
         name: '세트피스',
         icon: '⚽',
         path: `/user/${ouid}/analysis/set-pieces`,

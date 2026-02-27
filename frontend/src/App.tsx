@@ -8,7 +8,6 @@ import MatchDetailPage from './pages/MatchDetailPage';
 import ShotAnalysisPage from './pages/ShotAnalysisPage';
 import StyleAnalysisPage from './pages/StyleAnalysisPage';
 import PowerRankingsPage from './pages/PowerRankingsPage';
-import PassAnalysisPage from './pages/PassAnalysisPage';
 import SetPieceAnalysisPage from './pages/SetPieceAnalysisPage';
 import DefenseAnalysisPage from './pages/DefenseAnalysisPage';
 import PassVarietyAnalysisPage from './pages/PassVarietyAnalysisPage';
@@ -44,7 +43,6 @@ function AppContent() {
             <Route path="/match/:matchId" element={<MatchDetailPage />} />
             <Route path="/user/:ouid/analysis/shots" element={<ShotAnalysisPage />} />
             <Route path="/user/:ouid/analysis/style" element={<StyleAnalysisPage />} />
-            <Route path="/user/:ouid/analysis/passes" element={<PassAnalysisPage />} />
             <Route path="/user/:ouid/power-rankings" element={<PowerRankingsPage />} />
             <Route path="/user/:ouid/analysis/set-pieces" element={<SetPieceAnalysisPage />} />
             <Route path="/user/:ouid/analysis/defense" element={<DefenseAnalysisPage />} />
