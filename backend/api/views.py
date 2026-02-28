@@ -11,7 +11,7 @@ from django.http import Http404
 from django.utils import timezone
 from datetime import datetime
 import datetime as dt
-from .models import User, Match, ShotDetail, UserStats, PlayerPerformance
+from .models import User, Match, ShotDetail, UserStats, PlayerPerformance, SiteVisit
 from .serializers import (
     UserSerializer, MatchSerializer, MatchListSerializer,
     ShotDetailSerializer, UserStatsSerializer,
@@ -2588,3 +2588,16 @@ Sent via FC Strategy Buy Me a Coffee feature
             {'error': 'Failed to send message. Please try again later.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET', 'POST'])
+def visitor_count(request):
+    """
+    GET  /api/visitor-count/ → total_visits만 반환
+    POST /api/visitor-count/ → SiteVisit 1건 생성 + total_visits 반환
+    """
+    if request.method == 'POST':
+        SiteVisit.objects.create()
+
+    total_visits = SiteVisit.objects.count()
+    return Response({'total_visits': total_visits})

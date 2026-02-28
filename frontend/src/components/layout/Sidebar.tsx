@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { getUserByOuid } from '../../services/api';
+import { getUserByOuid, recordVisit } from '../../services/api';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -59,6 +59,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   // 유저 정보 상태
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loadingUser, setLoadingUser] = useState(false);
+  const [totalVisits, setTotalVisits] = useState<number | null>(null);
+
+  // 방문 기록
+  useEffect(() => {
+    recordVisit()
+      .then((data) => setTotalVisits(data.total_visits))
+      .catch(() => {});
+  }, []);
 
   // 유저 정보 가져오기
   useEffect(() => {
@@ -419,6 +427,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
           <div className="text-xs text-gray-500 text-center">
             <div>FC Online 전문가급</div>
             <div className="mt-1">경기 분석 시스템</div>
+            {totalVisits !== null && (
+              <div className="mt-2 text-[10px] text-gray-600">
+                {totalVisits.toLocaleString()} 방문
+              </div>
+            )}
           </div>
         </div>
       </aside>

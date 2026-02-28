@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, MatchViewSet, UserStatsViewSet,
     get_tier_info, send_support_message, search_players, opponent_dna,
+    visitor_count,
 )
 
 router = DefaultRouter()
@@ -16,4 +17,5 @@ urlpatterns = [
     path('support/', send_support_message, name='support'),
     path('search-players/', search_players, name='search-players'),
     path('opponent-dna/', opponent_dna, name='opponent-dna'),
+    path('visitor-count/', visitor_count, name='visitor-count'),
 ]

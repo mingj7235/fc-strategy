@@ -236,6 +236,12 @@ export const getOpponentDNA = async (opponentNickname: string, myNickname?: stri
   return response.data;
 };
 
+// Visitor Counter API
+export const recordVisit = async () => {
+  const response = await apiClient.post('/visitor-count/');
+  return response.data;
+};
+
 export default apiClient;
 
 // Support / Buy Me a Coffee

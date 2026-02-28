@@ -252,3 +252,14 @@ class PlayerPerformance(models.Model):
 
     def __str__(self):
         return f"{self.player_name} ({self.rating}) - {self.match.match_id}"
+
+
+class SiteVisit(models.Model):
+    """Site Visit Counter Model"""
+    visited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'site_visits'
+
+    def __str__(self):
+        return f"Visit at {self.visited_at}"
