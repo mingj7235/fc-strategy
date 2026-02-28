@@ -219,8 +219,9 @@ class UserViewSet(viewsets.ModelViewSet):
         fetching_key = f"fetching:{user.ouid}:{matchtype}"
         synced_key = f"synced:{user.ouid}:{matchtype}"
 
-        # Recently synced — no need to fetch again
-        if cache.get(synced_key):
+        # Recently synced — skip only if the synced limit covers the request
+        synced_limit = cache.get(synced_key)
+        if synced_limit and int(synced_limit) >= limit:
             return False
 
         # Check if already fetching
@@ -237,7 +238,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 finally:
                     cache.delete(lock_key)
                     cache.delete(fetching_key)
-                    cache.set(synced_key, "1", timeout=1800)  # 30 min
+                    cache.set(synced_key, str(limit), timeout=1800)  # 30 min
 
             gevent.spawn(bg_fetch)
             return True
