@@ -137,4 +137,4 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, rank }) => {
   );
 };
 
-export default PlayerCard;
+export default React.memo(PlayerCard);

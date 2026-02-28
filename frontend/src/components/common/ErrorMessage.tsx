@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface ErrorMessageProps {
   message: string;
   type?: 'error' | 'warning' | 'info';
@@ -76,4 +78,4 @@ const ErrorMessage = ({ message, type = 'error' }: ErrorMessageProps) => {
   );
 };
 
-export default ErrorMessage;
+export default React.memo(ErrorMessage);

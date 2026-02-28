@@ -220,6 +220,7 @@ class PlayerPerformance(models.Model):
             models.Index(fields=['spid']),
             models.Index(fields=['match', 'user_ouid']),
             models.Index(fields=['user_ouid', 'spid']),
+            models.Index(fields=['user_ouid', 'match', 'position']),
         ]
 
     def save(self, *args, **kwargs):

@@ -90,4 +90,4 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => {
   );
 };
 
-export default MatchCard;
+export default React.memo(MatchCard);

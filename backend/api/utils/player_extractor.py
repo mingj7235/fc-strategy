@@ -30,7 +30,9 @@ class PlayerPerformanceExtractor:
         if not match_info_list:
             return 0
 
-        created_count = 0
+        from api.models import User
+
+        performance_objects = []
 
         # matchInfo 배열 순회 (user와 opponent)
         for match_info in match_info_list:
@@ -43,36 +45,50 @@ class PlayerPerformanceExtractor:
             team_ouid_str = match_info.get('ouid')
 
             # Find the User object for this OUID
-            from api.models import User
             try:
                 team_user = User.objects.get(ouid=team_ouid_str)
             except User.DoesNotExist:
                 continue
 
             # 각 선수 데이터 추출 (실제 경기 참여 선수만)
-            # rating > 0인 선수들만 카운트하여 position 부여
             participated_index = 0
             for player_data in players:
                 try:
-                    # rating 확인 (실제 경기 참여 여부)
                     status = player_data.get('status', {})
                     rating = status.get('spRating', 0)
 
-                    # rating이 0이면 경기에 참여하지 않은 선수 (스킵)
                     if rating == 0:
                         continue
 
-                    # 실제 참여한 선수만 저장 (position은 참여 순서)
                     performance = cls._extract_player_performance(match, player_data, participated_index)
                     if performance:
-                        performance.user_ouid = team_user  # Set which user this player belongs to
-                        performance.save()
-                        created_count += 1
+                        performance.user_ouid = team_user
+                        cls._calculate_percentages(performance)
+                        performance_objects.append(performance)
                         participated_index += 1
-                except Exception as e:
+                except Exception:
                     continue
 
-        return created_count
+        if performance_objects:
+            PlayerPerformance.objects.bulk_create(performance_objects)
+
+        return len(performance_objects)
+
+    @staticmethod
+    def _calculate_percentages(p: PlayerPerformance):
+        """Calculate percentage fields (replaces save() override for bulk_create)."""
+        if p.pass_attempts > 0:
+            p.pass_success_rate = round((p.pass_success / p.pass_attempts) * 100, 2)
+        if p.short_pass_attempts > 0:
+            p.short_pass_accuracy = round((p.short_pass_success / p.short_pass_attempts) * 100, 2)
+        if p.long_pass_attempts > 0:
+            p.long_pass_accuracy = round((p.long_pass_success / p.long_pass_attempts) * 100, 2)
+        if p.shots > 0:
+            p.shot_accuracy = round((p.shots_on_target / p.shots) * 100, 2)
+        if p.dribble_attempts > 0:
+            p.dribble_success_rate = round((p.dribble_success / p.dribble_attempts) * 100, 2)
+        if p.tackle_attempts > 0:
+            p.tackle_success_rate = round((p.tackle_success / p.tackle_attempts) * 100, 2)
 
     @classmethod
     def _extract_player_performance(cls, match: Match, player_data: Dict[str, Any], lineup_index: int = 0) -> PlayerPerformance:

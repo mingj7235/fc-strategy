@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface StatCardProps {
   title: string;
   value: string | number;
@@ -26,4 +28,4 @@ const StatCard = ({ title, value, subtitle, icon }: StatCardProps) => {
   );
 };
 
-export default StatCard;
+export default React.memo(StatCard);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import PlayerAvatar from '../components/common/PlayerAvatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getShotAnalysis } from '../services/api';
@@ -181,7 +181,7 @@ const ShotAnalysisPage: React.FC = () => {
   }
 
   // Prepare chart data
-  const zoneChartData = Object.entries(analysis.zone_analysis || {}).map(([zone, stats]) => ({
+  const zoneChartData = useMemo(() => Object.entries(analysis.zone_analysis || {}).map(([zone, stats]) => ({
     name: zone === 'inside_box' ? '박스 안' :
           zone === 'outside_box' ? '박스 밖' :
           zone === 'center' ? '중앙' :
@@ -190,31 +190,31 @@ const ShotAnalysisPage: React.FC = () => {
     슈팅: stats?.shots || 0,
     골: stats?.goals || 0,
     전환율: stats?.conversion_rate || 0,
-  }));
+  })), [analysis]);
 
-  const shotTypeChartData = Object.entries(analysis.shot_types || {}).map(([type, stats]) => ({
+  const shotTypeChartData = useMemo(() => Object.entries(analysis.shot_types || {}).map(([type, stats]) => ({
     name: type,
     슈팅: stats?.count || 0,
     골: stats?.goals || 0,
     전환율: stats?.conversion || 0,
-  }));
+  })), [analysis]);
 
-  const distanceChartData = Object.entries(analysis.distance_analysis || {}).map(([distance, stats]) => ({
+  const distanceChartData = useMemo(() => Object.entries(analysis.distance_analysis || {}).map(([distance, stats]) => ({
     name: distance === 'very_close' ? '초근거리' :
           distance === 'inside_box' ? '박스 안' :
           distance === 'edge_of_box' ? '박스 경계' : '장거리',
     슈팅: stats?.shots || 0,
     골: stats?.goals || 0,
     전환율: stats?.conversion || 0,
-  }));
+  })), [analysis]);
 
-  const angleChartData = Object.entries(analysis.angle_analysis || {}).map(([angle, stats]) => ({
+  const angleChartData = useMemo(() => Object.entries(analysis.angle_analysis || {}).map(([angle, stats]) => ({
     name: angle === 'central' ? '중앙' :
           angle === 'semi_central' ? '준중앙' : '측면',
     슈팅: stats?.shots || 0,
     골: stats?.goals || 0,
     전환율: stats?.conversion || 0,
-  }));
+  })), [analysis]);
 
   return (
     <div className="min-h-screen bg-dark-bg py-8">

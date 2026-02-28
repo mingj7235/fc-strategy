@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPowerRankings } from '../services/api';
 import { cachedFetch } from '../services/apiCache';
@@ -64,7 +64,7 @@ const PowerRankingsPage: React.FC = () => {
   };
 
   // Sort rankings based on selected criteria
-  const getSortedRankings = () => {
+  const sortedRankings = useMemo(() => {
     if (!rankings) return [];
 
     const sorted = [...rankings.rankings];
@@ -81,7 +81,7 @@ const PowerRankingsPage: React.FC = () => {
     }
 
     return sorted;
-  };
+  }, [rankings, sortBy]);
 
   // Scroll to player card
   const handlePlayerClick = (spid: number) => {
@@ -144,8 +144,6 @@ const PowerRankingsPage: React.FC = () => {
       </div>
     );
   }
-
-  const sortedRankings = getSortedRankings();
 
   return (
     <div className="min-h-screen bg-dark-bg text-white">

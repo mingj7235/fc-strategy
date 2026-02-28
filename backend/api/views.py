@@ -1391,27 +1391,31 @@ class UserViewSet(viewsets.ModelViewSet):
         from .analyzers.skill_gap_analyzer import SkillGapAnalyzer
         client = NexonAPIClient()
 
+        # Batch ranker API call (single request instead of up to 10)
+        top_eligible = list(eligible.items())[:10]
+        players_query = [{'id': spid, 'po': perfs[0]['position']} for spid, perfs in top_eligible]
+        ranker_by_spid = {}
+        try:
+            ranker_data = client.get_ranker_stats(matchtype=matchtype, players=players_query)
+            if ranker_data and isinstance(ranker_data, list):
+                for entry in ranker_data:
+                    entry_spid = entry.get('spId')
+                    status = entry.get('status', {})
+                    status_list = []
+                    if isinstance(status, list):
+                        status_list = status
+                    elif isinstance(status, dict) and status:
+                        status_list = [status]
+                    if entry_spid:
+                        ranker_by_spid[entry_spid] = status_list
+        except Exception:
+            pass
+
         player_gaps = []
-        for spid, perfs in list(eligible.items())[:10]:  # Max 10 players (API rate limit)
+        for spid, perfs in top_eligible:
             position = perfs[0]['position']
             player_name = perfs[0]['player_name']
-
-            try:
-                ranker_data = client.get_ranker_stats(
-                    matchtype=matchtype,
-                    players=[{'id': spid, 'po': position}]
-                )
-                ranker_status_list = []
-                if ranker_data and isinstance(ranker_data, list):
-                    for entry in ranker_data:
-                        status = entry.get('status', {})
-                        if isinstance(status, list):
-                            ranker_status_list.extend(status)
-                        elif isinstance(status, dict) and status:
-                            # Pre-aggregated format: API returns single dict of averages
-                            ranker_status_list.append(status)
-            except Exception:
-                ranker_status_list = []
+            ranker_status_list = ranker_by_spid.get(spid, [])
 
             gap = SkillGapAnalyzer.analyze_player_gap(
                 spid=spid,
@@ -1590,19 +1594,21 @@ class UserViewSet(viewsets.ModelViewSet):
             'pass_success_rate': float(m.pass_success_rate or 0),
         } for m in matches]
 
-        all_performances = list(PlayerPerformance.objects.filter(
+        # Single query for all fields (eliminates duplicate DB query)
+        from collections import Counter
+        all_perf_raw = list(PlayerPerformance.objects.filter(
             match__in=matches, user_ouid=user
         ).exclude(position=28).values(
-            'rating', 'goals', 'assists', 'dribble_attempts', 'dribble_success'
+            'spid', 'position', 'rating', 'goals', 'assists',
+            'dribble_attempts', 'dribble_success'
         ))
 
-        # Try to get ranker-stats for top 3 most-played players
-        from collections import Counter
-        all_perf_with_spid = list(PlayerPerformance.objects.filter(
-            match__in=matches, user_ouid=user
-        ).exclude(position=28).values('spid', 'position'))
+        all_performances = [
+            {k: p[k] for k in ('rating', 'goals', 'assists', 'dribble_attempts', 'dribble_success')}
+            for p in all_perf_raw
+        ]
 
-        spid_counter = Counter(p['spid'] for p in all_perf_with_spid)
+        spid_counter = Counter(p['spid'] for p in all_perf_raw)
         top_spids = [(spid, count) for spid, count in spid_counter.most_common(3) if count >= 5]
 
         ranker_api_data = []
@@ -1611,7 +1617,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 client = NexonAPIClient()
                 players_query = []
                 spid_positions = {}
-                for p in all_perf_with_spid:
+                for p in all_perf_raw:
                     if p['spid'] not in spid_positions:
                         spid_positions[p['spid']] = p['position']
 
@@ -2590,6 +2596,15 @@ def visitor_count(request):
     """
     if request.method == 'POST':
         SiteVisit.objects.create()
+        try:
+            cache.incr('visitor_total')
+        except ValueError:
+            cache.set('visitor_total', SiteVisit.objects.count(), 3600)
+        total_visits = cache.get('visitor_total')
+    else:
+        total_visits = cache.get('visitor_total')
+        if total_visits is None:
+            total_visits = SiteVisit.objects.count()
+            cache.set('visitor_total', total_visits, 3600)
 
-    total_visits = SiteVisit.objects.count()
     return Response({'total_visits': total_visits})

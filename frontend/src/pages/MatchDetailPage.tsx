@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { getMatchDetail, getMatchHeatmap, getMatchAnalysis, getAssistNetwork, getShotTypes, getPassTypes, getHeadingAnalysis } from '../services/api';
+import { getMatchHeatmap, getMatchAnalysis, getAssistNetwork, getShotTypes, getPassTypes, getHeadingAnalysis } from '../services/api';
+import { cachedFetch } from '../services/apiCache';
 import LoadingProgress from '../components/common/LoadingProgress';
 import ErrorMessage from '../components/common/ErrorMessage';
 import ShotHeatmap from '../components/visualizations/ShotHeatmap';
@@ -44,15 +45,19 @@ const MatchDetailPage: React.FC = () => {
 
       try {
         setLoading(true);
-        const [, heatmapData, analysisData, assistNetworkData, shotTypesData, passTypesData, headingData] = await Promise.all([
-          getMatchDetail(matchId, ouid),
-          getMatchHeatmap(matchId, ouid),
-          getMatchAnalysis(matchId, ouid),
-          getAssistNetwork(matchId, ouid),
-          getShotTypes(matchId, ouid),
-          getPassTypes(matchId, ouid),
-          getHeadingAnalysis(matchId, ouid),
-        ]);
+        const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+        const [heatmapData, analysisData, assistNetworkData, shotTypesData, passTypesData, headingData] = await cachedFetch(
+          `matchDetail:${matchId}:${ouid}`,
+          () => Promise.all([
+            getMatchHeatmap(matchId, ouid),
+            getMatchAnalysis(matchId, ouid),
+            getAssistNetwork(matchId, ouid),
+            getShotTypes(matchId, ouid),
+            getPassTypes(matchId, ouid),
+            getHeadingAnalysis(matchId, ouid),
+          ]),
+          CACHE_TTL
+        );
 
         setShotDetails(heatmapData);
         setAnalysis(analysisData);

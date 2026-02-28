@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { select } from 'd3-selection';
 import 'd3-transition';
 import FieldCanvas from './FieldCanvas';
@@ -75,6 +75,14 @@ const ShotHeatmap: React.FC<ShotHeatmapProps> = ({
         return '알 수 없음';
     }
   };
+
+  const legendCounts = useMemo(() => heatmapData.reduce(
+    (acc, d) => {
+      acc[d.result] = (acc[d.result] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  ), [heatmapData]);
 
   useEffect(() => {
     if (!svgRef.current || !heatmapData.length) return;
@@ -162,19 +170,19 @@ const ShotHeatmap: React.FC<ShotHeatmapProps> = ({
       <div className="mt-4 flex flex-wrap gap-4 justify-center text-sm">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-green-500"></div>
-          <span>골 ({heatmapData.filter((d) => d.result === 'goal').length})</span>
+          <span>골 ({legendCounts.goal || 0})</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-          <span>유효슈팅 ({heatmapData.filter((d) => d.result === 'on_target').length})</span>
+          <span>유효슈팅 ({legendCounts.on_target || 0})</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-gray-400"></div>
-          <span>빗나감 ({heatmapData.filter((d) => d.result === 'off_target').length})</span>
+          <span>빗나감 ({legendCounts.off_target || 0})</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-red-500"></div>
-          <span>막힘 ({heatmapData.filter((d) => d.result === 'blocked').length})</span>
+          <span>막힘 ({legendCounts.blocked || 0})</span>
         </div>
       </div>
 

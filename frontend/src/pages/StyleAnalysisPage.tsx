@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getStyleAnalysis, getUserMatches } from '../services/api';
 import { cachedFetch } from '../services/apiCache';
@@ -212,7 +212,7 @@ const StyleAnalysisPage: React.FC = () => {
   const tempoBadge = getTempoBadge(analysis.tempo);
 
   // Prepare comparison chart data
-  const comparisonData = [
+  const comparisonData = useMemo(() => [
     {
       category: '점유율',
       승리: analysis.win_patterns.possession,
@@ -238,7 +238,7 @@ const StyleAnalysisPage: React.FC = () => {
       승리: analysis.win_patterns.goals,
       패배: analysis.loss_patterns.goals,
     },
-  ];
+  ], [analysis]);
 
   return (
     <div className="min-h-screen bg-dark-bg py-8">
