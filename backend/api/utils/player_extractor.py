@@ -2,9 +2,12 @@
 PlayerPerformance Extractor
 Extracts detailed player statistics from Nexon API raw_data
 """
+import logging
 from typing import Dict, List, Any
 from api.models import Match, PlayerPerformance
 from nexon_api.metadata import MetadataLoader
+
+logger = logging.getLogger(__name__)
 
 
 class PlayerPerformanceExtractor:
@@ -69,7 +72,8 @@ class PlayerPerformanceExtractor:
                         cls._calculate_percentages(performance)
                         performance_objects.append(performance)
                         participated_index += 1
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Player extraction failed spid={spid}: {e}")
                     continue
 
         if performance_objects:

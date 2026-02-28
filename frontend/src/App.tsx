@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import HomePage from './pages/HomePage';
 
 // Lazy load all pages except HomePage (shown on initial visit)
@@ -47,6 +48,7 @@ function AppContent() {
       {/* Main Content Area */}
       <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
         <div className="flex-1">
+          <ErrorBoundary>
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<HomePage />} />
@@ -70,6 +72,7 @@ function AppContent() {
               <Route path="/opponent-scout" element={<OpponentScoutPage />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         </div>
         {/* Only show Footer if NOT on HomePage */}
         {!isHomePage && <Footer />}

@@ -165,7 +165,8 @@ class UserViewSet(viewsets.ModelViewSet):
                     try:
                         match_data = client.get_match_detail(match_id)
                         self._create_match_from_data(match_id, user, match_data)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"Match fetch failed {match_id}: {e}")
                         pass  # Individual match failures are non-fatal
 
                 pool = GeventPool(size=10)
@@ -187,7 +188,12 @@ class UserViewSet(viewsets.ModelViewSet):
         lock_key = f"ensure_lock:{user.ouid}:{matchtype}"
 
         # Try to acquire lock; if another request is already fetching, wait
-        for _ in range(60):  # Max 60s wait
+        # Exponential backoff: 0.2 → 0.4 → 0.8 → 1.6 → 3.0 (cap), max 30s total
+        elapsed = 0
+        delay = 0.2
+        max_wait = 30
+        max_delay = 3.0
+        while elapsed < max_wait:
             if cache.add(lock_key, "1", timeout=120):
                 try:
                     return self._do_ensure_matches(user, matchtype, limit, defer_raw_data)
@@ -198,7 +204,9 @@ class UserViewSet(viewsets.ModelViewSet):
             db_matches = list(self._match_queryset(user, matchtype, limit, defer_raw_data))
             if len(db_matches) >= limit:
                 return db_matches
-            time.sleep(1)
+            time.sleep(delay)
+            elapsed += delay
+            delay = min(delay * 2, max_delay)
 
         # Timeout — return whatever is in DB
         return list(self._match_queryset(user, matchtype, limit, defer_raw_data))
@@ -271,7 +279,8 @@ class UserViewSet(viewsets.ModelViewSet):
                         **div_info,
                     })
             data['divisions'] = sorted(divisions, key=lambda x: x['matchtype'])
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Division load failed: {e}")
             data['divisions'] = []
 
         return Response(data)
@@ -1405,8 +1414,8 @@ class UserViewSet(viewsets.ModelViewSet):
                         status_list = [status]
                     if entry_spid:
                         ranker_by_spid[entry_spid] = status_list
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Ranker stats failed: {e}")
 
         player_gaps = []
         for spid, perfs in top_eligible:
@@ -1479,7 +1488,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 if len(batch) < page_size:
                     break  # 마지막 페이지
                 offset += page_size
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Trade history failed: {e}")
             trade_history = []
 
         # Group performances by spid
@@ -1624,8 +1634,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 raw = client.get_ranker_stats(matchtype=matchtype, players=players_query)
                 if isinstance(raw, list):
                     ranker_api_data = raw
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Ranker API failed: {e}")
 
         # Get user's division
         division = user.max_division or 300
@@ -2414,7 +2424,8 @@ def opponent_dna(request):
         # ── 상대 데이터 수집 ──────────────────────────────────────────────
         try:
             opponent_ouid = client.get_user_ouid(opponent_nickname)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Opponent search failed: {e}")
             return Response(
                 {'error': f'닉네임 "{opponent_nickname}"을(를) 찾을 수 없습니다.'},
                 status=status.HTTP_404_NOT_FOUND
@@ -2453,7 +2464,8 @@ def opponent_dna(request):
         def _fetch_match_detail(mid):
             try:
                 return client.get_match_detail(mid)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Match detail failed {mid}: {e}")
                 return None
 
         pool = GeventPool(size=10)
@@ -2504,9 +2516,9 @@ def opponent_dna(request):
                     response_data['battle_prediction'] = battle_prediction
                     response_data['my_nickname'] = my_nickname
                     response_data['my_indices'] = my_dna['indices']
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Battle prediction failed: {e}")
                 # 승부 예측 실패는 무시 — 기본 스카우팅 결과는 반환
-                pass
 
         cache.set(cache_key, response_data, 21600)  # 6 hours
         return Response(response_data)
@@ -2578,7 +2590,8 @@ Sent via FC Strategy Buy Me a Coffee feature
             'success': True,
             'message': 'Support message sent successfully'
         })
-    except Exception:
+    except Exception as e:
+        logger.error(f"Email send failed: {e}", exc_info=True)
         return Response(
             {'error': 'Failed to send message. Please try again later.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
