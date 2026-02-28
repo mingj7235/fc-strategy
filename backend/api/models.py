@@ -48,9 +48,8 @@ class Match(models.Model):
         ordering = ['-match_date']
         unique_together = ['match_id', 'ouid']  # Same match can exist for different users
         indexes = [
-            models.Index(fields=['ouid', '-match_date']),
-            models.Index(fields=['match_type']),
-            models.Index(fields=['match_id']),  # Index for match_id queries
+            models.Index(fields=['ouid', 'match_type', '-match_date']),  # Covers main query pattern
+            models.Index(fields=['match_id', 'ouid']),  # For bulk match_id lookups
         ]
 
     def __str__(self):

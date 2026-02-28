@@ -139,13 +139,15 @@ class UserViewSet(viewsets.ModelViewSet):
         ]
         cache.delete_many(cache_keys)
 
-    def _do_ensure_matches(self, user, matchtype, limit):
-        """Core logic for fetching and storing matches from Nexon API."""
-        existing_matches = Match.objects.filter(
-            ouid=user,
-            match_type=matchtype
-        ).order_by('-match_date')
+    def _match_queryset(self, user, matchtype, limit, defer_raw_data=False):
+        """Build the common Match queryset, optionally deferring raw_data."""
+        qs = Match.objects.filter(ouid=user, match_type=matchtype).order_by('-match_date')
+        if defer_raw_data:
+            qs = qs.defer('raw_data')
+        return qs[:limit]
 
+    def _do_ensure_matches(self, user, matchtype, limit, defer_raw_data=False):
+        """Core logic for fetching and storing matches from Nexon API."""
         try:
             client = NexonAPIClient()
             match_ids = client.get_user_matches(user.ouid, matchtype=matchtype, limit=limit)
@@ -172,15 +174,12 @@ class UserViewSet(viewsets.ModelViewSet):
                 # Invalidate analysis caches so they recompute with new matches
                 self._invalidate_user_caches(user.ouid, matchtype, limit)
 
-            return list(
-                Match.objects.filter(ouid=user, match_type=matchtype)
-                .order_by('-match_date')[:limit]
-            )
+            return list(self._match_queryset(user, matchtype, limit, defer_raw_data))
 
         except NexonAPIException:
-            return list(existing_matches[:limit])
+            return list(self._match_queryset(user, matchtype, limit, defer_raw_data))
 
-    def _ensure_matches(self, user, matchtype, limit):
+    def _ensure_matches(self, user, matchtype, limit, defer_raw_data=False):
         """
         Ensure we have at least 'limit' matches in the database.
         Uses Redis lock to prevent duplicate API calls for the same user.
@@ -191,24 +190,18 @@ class UserViewSet(viewsets.ModelViewSet):
         for _ in range(60):  # Max 60s wait
             if cache.add(lock_key, "1", timeout=120):
                 try:
-                    return self._do_ensure_matches(user, matchtype, limit)
+                    return self._do_ensure_matches(user, matchtype, limit, defer_raw_data)
                 finally:
                     cache.delete(lock_key)
 
-            # While waiting, check if DB already has enough data
-            count = Match.objects.filter(ouid=user, match_type=matchtype).count()
-            if count >= limit:
-                return list(
-                    Match.objects.filter(ouid=user, match_type=matchtype)
-                    .order_by('-match_date')[:limit]
-                )
+            # While waiting, check if DB already has enough data (single query)
+            db_matches = list(self._match_queryset(user, matchtype, limit, defer_raw_data))
+            if len(db_matches) >= limit:
+                return db_matches
             time.sleep(1)
 
         # Timeout — return whatever is in DB
-        return list(
-            Match.objects.filter(ouid=user, match_type=matchtype)
-            .order_by('-match_date')[:limit]
-        )
+        return list(self._match_queryset(user, matchtype, limit, defer_raw_data))
 
     def _start_background_fetch(self, user, matchtype, limit):
         """
@@ -362,9 +355,11 @@ class UserViewSet(viewsets.ModelViewSet):
         # Start background fetch if needed (non-blocking)
         is_fetching = self._start_background_fetch(user, matchtype, limit)
 
-        # Return whatever is in DB right now
+        # Return whatever is in DB right now (defer raw_data — not needed for list)
         db_matches = list(
             Match.objects.filter(ouid=user, match_type=matchtype)
+            .select_related('ouid')
+            .defer('raw_data')
             .order_by('-match_date')[:limit]
         )
         serializer = MatchListSerializer(db_matches, many=True)
@@ -399,9 +394,10 @@ class UserViewSet(viewsets.ModelViewSet):
         if not is_fetching:
             is_fetching = self._start_background_fetch(user, matchtype, limit)
 
-        # Use whatever matches are in DB right now
+        # Use whatever matches are in DB right now (defer raw_data — not needed for overview)
         matches = list(
             Match.objects.filter(ouid=user, match_type=matchtype)
+            .defer('raw_data')
             .order_by('-match_date')[:limit]
         )
 
@@ -576,7 +572,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(cached_data)
 
         # Ensure we have enough matches (fetch from API if needed)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response(
@@ -892,7 +888,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = get_object_or_404(User, ouid=ouid)
 
         # Ensure we have enough matches (fetch from API if needed)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response({
@@ -1116,7 +1112,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = get_object_or_404(User, ouid=ouid)
 
         # Ensure we have enough matches (fetch from API if needed)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response({
@@ -1360,7 +1356,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(cached)
 
         user = get_object_or_404(User, ouid=ouid)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response({'error': 'No matches found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1461,7 +1457,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(cached)
 
         user = get_object_or_404(User, ouid=ouid)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response({'error': 'No matches found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1580,7 +1576,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(cached)
 
         user = get_object_or_404(User, ouid=ouid)
-        matches = self._ensure_matches(user, matchtype, limit)
+        matches = self._ensure_matches(user, matchtype, limit, defer_raw_data=True)
 
         if not matches:
             return Response({'error': 'No matches found'}, status=status.HTTP_404_NOT_FOUND)

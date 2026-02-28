@@ -34,6 +34,10 @@ class PlayerPerformanceExtractor:
 
         performance_objects = []
 
+        # Batch load all team users to avoid N+1 queries
+        team_ouids = [info.get('ouid') for info in match_info_list if info.get('ouid')]
+        users_by_ouid = {u.ouid: u for u in User.objects.filter(ouid__in=team_ouids)}
+
         # matchInfo 배열 순회 (user와 opponent)
         for match_info in match_info_list:
             players = match_info.get('player', [])
@@ -44,10 +48,9 @@ class PlayerPerformanceExtractor:
             # Get the OUID for this team
             team_ouid_str = match_info.get('ouid')
 
-            # Find the User object for this OUID
-            try:
-                team_user = User.objects.get(ouid=team_ouid_str)
-            except User.DoesNotExist:
+            # Find the User object for this OUID (from pre-loaded batch)
+            team_user = users_by_ouid.get(team_ouid_str)
+            if not team_user:
                 continue
 
             # 각 선수 데이터 추출 (실제 경기 참여 선수만)
