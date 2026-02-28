@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
-import * as d3 from 'd3';
+import { select } from 'd3-selection';
+import 'd3-transition';
 import FieldCanvas from './FieldCanvas';
 
 interface ShotPoint {
@@ -78,8 +79,8 @@ const ShotHeatmap: React.FC<ShotHeatmapProps> = ({
   useEffect(() => {
     if (!svgRef.current || !heatmapData.length) return;
 
-    const svg = d3.select(svgRef.current);
-    const tooltip = d3.select(tooltipRef.current);
+    const svg = select(svgRef.current);
+    const tooltip = select(tooltipRef.current);
 
     // Clear previous markers
     svg.selectAll('.shot-marker').remove();
@@ -108,7 +109,7 @@ const ShotHeatmap: React.FC<ShotHeatmapProps> = ({
     markers
       .on('mouseover', function (event, d) {
         // Enlarge marker
-        d3.select(this)
+        select(this)
           .transition()
           .duration(150)
           .attr('r', getSize(d.result) * 1.5)
@@ -132,7 +133,7 @@ const ShotHeatmap: React.FC<ShotHeatmapProps> = ({
       })
       .on('mouseout', function (_event, d) {
         // Reset marker
-        d3.select(this)
+        select(this)
           .transition()
           .duration(150)
           .attr('r', getSize(d.result))

@@ -8,8 +8,6 @@ import ErrorMessage from '../components/common/ErrorMessage';
 const BUYMEACOFFEE_USERNAME = 'joshuara7235';
 
 const HomePage = () => {
-  console.log('🏠 HomePage component rendering');
-
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,20 +25,11 @@ const HomePage = () => {
     setError('');
 
     try {
-      console.log('Searching for user:', nickname);
       const user = await searchUser(nickname);
-      console.log('User found:', user);
       navigate(`/user/${user.ouid}`);
     } catch (err: any) {
-      console.error('Search error:', err);
-      console.error('Error response:', err.response);
-      console.error('Error response data:', err.response?.data);
-      console.error('Error response status:', err.response?.status);
-
       // Handle specific error messages
       const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || '유저를 찾을 수 없습니다.';
-
-      console.log('Extracted error message:', errorMessage);
 
       // Make error message more user-friendly
       if (

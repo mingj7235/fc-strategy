@@ -1,4 +1,6 @@
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from django.conf import settings
 from django.core.cache import cache
 from .exceptions import NexonAPIException, UserNotFoundException
@@ -9,11 +11,34 @@ class NexonAPIClient:
 
     BASE_URL = settings.NEXON_API_BASE_URL
 
+    # Shared session with connection pooling (one per process)
+    _session = None
+
     def __init__(self):
         self.api_key = settings.NEXON_API_KEY
         self.headers = {
             "x-nxopen-api-key": self.api_key
         }
+
+    @classmethod
+    def _get_session(cls):
+        """Get or create a shared requests.Session with connection pooling and retry"""
+        if cls._session is None:
+            cls._session = requests.Session()
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=0.3,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["GET"],
+            )
+            adapter = HTTPAdapter(
+                max_retries=retry_strategy,
+                pool_connections=10,
+                pool_maxsize=20,
+            )
+            cls._session.mount("https://", adapter)
+            cls._session.mount("http://", adapter)
+        return cls._session
 
     def _make_request(self, endpoint, params=None, cache_key=None, cache_timeout=3600):
         """Make API request with caching support"""
@@ -23,8 +48,9 @@ class NexonAPIClient:
                 return cached_data
 
         url = f"{self.BASE_URL}{endpoint}"
+        session = self._get_session()
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=10)
+            response = session.get(url, headers=self.headers, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 
@@ -65,16 +91,18 @@ class NexonAPIClient:
 
     def search_user(self, nickname):
         """Search user by nickname, returns full response dict"""
+        session = self._get_session()
         url = f"{self.BASE_URL}/fconline/v1/id?nickname={nickname}"
-        response = requests.get(url, headers=self.headers, timeout=10)
+        response = session.get(url, headers=self.headers, timeout=10)
         if response.status_code >= 400:
             raise NexonAPIException(f"API request failed: {response.status_code}")
         return response.json()
 
     def get_user_info(self, ouid):
         """Get user info by ouid, returns full response dict"""
+        session = self._get_session()
         url = f"{self.BASE_URL}/fconline/v1/user/basic?ouid={ouid}"
-        response = requests.get(url, headers=self.headers, timeout=10)
+        response = session.get(url, headers=self.headers, timeout=10)
         if response.status_code >= 400:
             raise NexonAPIException(f"API request failed: {response.status_code}")
         return response.json()

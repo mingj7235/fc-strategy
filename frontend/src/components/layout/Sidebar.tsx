@@ -61,10 +61,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   const [loadingUser, setLoadingUser] = useState(false);
   const [totalVisits, setTotalVisits] = useState<number | null>(null);
 
-  // 방문 기록
+  // 방문 기록 (세션당 1회만)
   useEffect(() => {
+    if (sessionStorage.getItem('visited')) {
+      // 이미 기록된 세션 — GET으로 카운트만 조회
+      import('../../services/api').then(({ default: apiClient }) => {
+        apiClient.get('/visitor-count/').then((res) => setTotalVisits(res.data.total_visits)).catch(() => {});
+      });
+      return;
+    }
     recordVisit()
-      .then((data) => setTotalVisits(data.total_visits))
+      .then((data) => {
+        setTotalVisits(data.total_visits);
+        sessionStorage.setItem('visited', '1');
+      })
       .catch(() => {});
   }, []);
 

@@ -587,11 +587,10 @@ class UserViewSet(viewsets.ModelViewSet):
         all_shots = []
         player_shots = {}  # spid -> {shots, goals, xg_total}
 
-        for match in matches:
-            # Get shot details from ShotDetail model (with adjusted results)
-            shots = ShotDetail.objects.filter(match=match)
+        # Single query for all shots across all matches (fixes N+1)
+        all_shot_objects = ShotDetail.objects.filter(match__in=matches)
 
-            for shot in shots:
+        for shot in all_shot_objects:
                 # Add to overall shot list for heatmap
                 all_shots.append({
                     'x': float(shot.x),
@@ -1130,15 +1129,14 @@ class UserViewSet(viewsets.ModelViewSet):
             'goals': sum(m.goals_for for m in matches),
         }
 
-        # Get all player performances
-        all_performances = []
-        for match in matches:
-            performances = PlayerPerformance.objects.filter(match=match).values(
+        # Get all player performances (single query instead of per-match)
+        all_performances = list(
+            PlayerPerformance.objects.filter(match__in=matches).values(
                 'spid', 'player_name', 'season_id', 'season_name',
                 'position', 'pass_attempts', 'pass_success',
                 'assists', 'goals'
             )
-            all_performances.extend(list(performances))
+        )
 
         # Analyze passes (PassAnalyzer handles empty performances gracefully)
         analysis = PassAnalyzer.analyze_passes(
@@ -2448,14 +2446,15 @@ def opponent_dna(request):
                 'battle_prediction': None,
             })
 
-        opponent_matches_raw = []
-        for match_id in opp_match_ids[:30]:
+        # Fetch match details in parallel using gevent pool
+        def _fetch_match_detail(mid):
             try:
-                raw = client.get_match_detail(match_id)
-                if raw:
-                    opponent_matches_raw.append(raw)
+                return client.get_match_detail(mid)
             except Exception:
-                continue
+                return None
+
+        pool = GeventPool(size=10)
+        opponent_matches_raw = [r for r in pool.map(_fetch_match_detail, opp_match_ids[:30]) if r]
 
         # 상대 DNA 분석
         opp_result = OpponentDNAAnalyzer.analyze_opponent_dna(
@@ -2481,14 +2480,7 @@ def opponent_dna(request):
                     my_match_ids = client.get_user_matches(
                         my_ouid, matchtype=matchtype, limit=30
                     )
-                    my_matches_raw = []
-                    for match_id in (my_match_ids or [])[:30]:
-                        try:
-                            raw = client.get_match_detail(match_id)
-                            if raw:
-                                my_matches_raw.append(raw)
-                        except Exception:
-                            continue
+                    my_matches_raw = [r for r in pool.map(_fetch_match_detail, (my_match_ids or [])[:30]) if r]
 
                     # 내 DNA 지수도 계산
                     my_dna = OpponentDNAAnalyzer.analyze_opponent_dna(
