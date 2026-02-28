@@ -175,6 +175,38 @@ const StyleAnalysisPage: React.FC = () => {
     }
   };
 
+  // Prepare comparison chart data (must be before conditional returns to satisfy Rules of Hooks)
+  const comparisonData = useMemo(() => {
+    if (!analysis) return [];
+    return [
+      {
+        category: '점유율',
+        승리: analysis.win_patterns.possession,
+        패배: analysis.loss_patterns.possession,
+      },
+      {
+        category: '슈팅',
+        승리: analysis.win_patterns.shots,
+        패배: analysis.loss_patterns.shots,
+      },
+      {
+        category: '유효슈팅',
+        승리: analysis.win_patterns.shots_on_target,
+        패배: analysis.loss_patterns.shots_on_target,
+      },
+      {
+        category: '패스 성공률',
+        승리: analysis.win_patterns.pass_success_rate,
+        패배: analysis.loss_patterns.pass_success_rate,
+      },
+      {
+        category: '득점',
+        승리: analysis.win_patterns.goals,
+        패배: analysis.loss_patterns.goals,
+      },
+    ];
+  }, [analysis]);
+
   if (loading) {
     return (
       <LoadingProgress
@@ -210,35 +242,6 @@ const StyleAnalysisPage: React.FC = () => {
   const possessionBadge = getPossessionStyleBadge(analysis.possession_style);
   const defensiveBadge = getDefensiveBadge(analysis.defensive_approach);
   const tempoBadge = getTempoBadge(analysis.tempo);
-
-  // Prepare comparison chart data
-  const comparisonData = useMemo(() => [
-    {
-      category: '점유율',
-      승리: analysis.win_patterns.possession,
-      패배: analysis.loss_patterns.possession,
-    },
-    {
-      category: '슈팅',
-      승리: analysis.win_patterns.shots,
-      패배: analysis.loss_patterns.shots,
-    },
-    {
-      category: '유효슈팅',
-      승리: analysis.win_patterns.shots_on_target,
-      패배: analysis.loss_patterns.shots_on_target,
-    },
-    {
-      category: '패스 성공률',
-      승리: analysis.win_patterns.pass_success_rate,
-      패배: analysis.loss_patterns.pass_success_rate,
-    },
-    {
-      category: '득점',
-      승리: analysis.win_patterns.goals,
-      패배: analysis.loss_patterns.goals,
-    },
-  ], [analysis]);
 
   return (
     <div className="min-h-screen bg-dark-bg py-8">
